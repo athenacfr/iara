@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ahtwr/cw/internal/config"
 	"github.com/ahtwr/cw/internal/git"
+	"github.com/ahtwr/cw/internal/paths"
 	"github.com/ahtwr/cw/internal/project"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -348,7 +348,7 @@ func (m projectListModel) updateRename(msg tea.KeyMsg) (projectListModel, tea.Cm
 			m.renameProj = ""
 			return m, nil
 		}
-		newPath := filepath.Join(config.ProjectsDir(), newName)
+		newPath := filepath.Join(paths.ProjectsDir(), newName)
 		if _, err := os.Stat(newPath); err == nil {
 			m.renameErr = "A project with that name already exists"
 			return m, nil

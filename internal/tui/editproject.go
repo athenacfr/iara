@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ahtwr/cw/internal/config"
 	"github.com/ahtwr/cw/internal/gh"
 	"github.com/ahtwr/cw/internal/git"
+	"github.com/ahtwr/cw/internal/paths"
 	"github.com/ahtwr/cw/internal/project"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -88,7 +88,7 @@ func newEditProjectModel(name string) editProjectModel {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
-	projPath := filepath.Join(config.ProjectsDir(), name)
+	projPath := filepath.Join(paths.ProjectsDir(), name)
 
 	m := editProjectModel{
 		step:        editStepMain,
@@ -193,7 +193,7 @@ func (m editProjectModel) update(msg tea.Msg) (editProjectModel, tea.Cmd) {
 
 	case projectRenamedMsg:
 		m.projectName = msg.newName
-		m.projectPath = filepath.Join(config.ProjectsDir(), msg.newName)
+		m.projectPath = filepath.Join(paths.ProjectsDir(), msg.newName)
 		m.step = editStepMain
 		return m, nil
 
@@ -299,7 +299,7 @@ func (m editProjectModel) updateRename(msg tea.KeyMsg) (editProjectModel, tea.Cm
 			return m, nil
 		}
 		// Check if name already exists
-		newPath := filepath.Join(config.ProjectsDir(), newName)
+		newPath := filepath.Join(paths.ProjectsDir(), newName)
 		if _, err := os.Stat(newPath); err == nil {
 			m.renameErr = "A project with that name already exists"
 			return m, nil
@@ -398,7 +398,7 @@ func (m editProjectModel) updateGHRepos(msg tea.KeyMsg) (editProjectModel, tea.C
 				return m, nil
 			}
 
-			projDir := filepath.Join(config.ProjectsDir(), m.projectName)
+			projDir := filepath.Join(paths.ProjectsDir(), m.projectName)
 			var repoNames []string
 			for _, r := range selected {
 				name := r.NameWithOwner
@@ -529,7 +529,7 @@ func (m editProjectModel) updateCopyMove(msg tea.KeyMsg) (editProjectModel, tea.
 
 func cloneURLToProject(projectName, url string) tea.Cmd {
 	return func() tea.Msg {
-		projDir := filepath.Join(config.ProjectsDir(), projectName)
+		projDir := filepath.Join(paths.ProjectsDir(), projectName)
 		name := filepath.Base(strings.TrimSuffix(url, ".git"))
 		if name == "" || name == "." {
 			name = "repo"
@@ -541,7 +541,7 @@ func cloneURLToProject(projectName, url string) tea.Cmd {
 
 func addLocalDirToProject(projectName, srcPath string, move bool) tea.Cmd {
 	return func() tea.Msg {
-		projDir := filepath.Join(config.ProjectsDir(), projectName)
+		projDir := filepath.Join(paths.ProjectsDir(), projectName)
 		name := filepath.Base(srcPath)
 		dest := filepath.Join(projDir, name)
 		if move {
@@ -555,7 +555,7 @@ func addLocalDirToProject(projectName, srcPath string, move bool) tea.Cmd {
 
 func initEmptyRepoInProject(projectName string) tea.Cmd {
 	return func() tea.Msg {
-		projDir := filepath.Join(config.ProjectsDir(), projectName)
+		projDir := filepath.Join(paths.ProjectsDir(), projectName)
 		git.Init(projDir)
 		return addCompleteMsg{}
 	}

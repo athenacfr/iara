@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ahtwr/cw/internal/paths"
 )
 
-// EnvsDir returns the global envs directory (~/.local/share/cw/envs).
+// EnvsDir returns the global envs directory.
 func EnvsDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "cw", "envs")
+	return paths.EnvsDir()
 }
 
 // GlobalPath returns the path to a repo's global env file.

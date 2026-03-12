@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ahtwr/cw/internal/config"
+	"github.com/ahtwr/cw/internal/paths"
 )
 
 const commandHeader = `> **Repo: %s** — Run all operations for this command within the ` + "`%s/`" + ` directory.
@@ -27,7 +27,7 @@ func SyncCommands(name string) error {
 		return err
 	}
 
-	projectDir := filepath.Join(config.ProjectsDir(), name)
+	projectDir := filepath.Join(paths.ProjectsDir(), name)
 	destDir := filepath.Join(projectDir, ".claude", "commands")
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return err

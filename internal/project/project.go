@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/ahtwr/cw/internal/config"
 	"github.com/ahtwr/cw/internal/git"
+	"github.com/ahtwr/cw/internal/paths"
 )
 
 type Repo struct {
@@ -23,7 +23,7 @@ type Project struct {
 }
 
 func List() ([]Project, error) {
-	dir := config.ProjectsDir()
+	dir := paths.ProjectsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -47,7 +47,7 @@ func List() ([]Project, error) {
 }
 
 func Get(name string) (*Project, error) {
-	dir := filepath.Join(config.ProjectsDir(), name)
+	dir := filepath.Join(paths.ProjectsDir(), name)
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -89,24 +89,24 @@ func Get(name string) (*Project, error) {
 }
 
 func Create(name string) (string, error) {
-	dir := filepath.Join(config.ProjectsDir(), name)
+	dir := filepath.Join(paths.ProjectsDir(), name)
 	err := os.MkdirAll(dir, 0755)
 	return dir, err
 }
 
 func Rename(oldName, newName string) error {
-	oldPath := filepath.Join(config.ProjectsDir(), oldName)
-	newPath := filepath.Join(config.ProjectsDir(), newName)
+	oldPath := filepath.Join(paths.ProjectsDir(), oldName)
+	newPath := filepath.Join(paths.ProjectsDir(), newName)
 	return os.Rename(oldPath, newPath)
 }
 
 func Delete(name string) error {
-	dir := filepath.Join(config.ProjectsDir(), name)
+	dir := filepath.Join(paths.ProjectsDir(), name)
 	return os.RemoveAll(dir)
 }
 
 func HasClaudeMD(name string) bool {
-	dir := filepath.Join(config.ProjectsDir(), name)
+	dir := filepath.Join(paths.ProjectsDir(), name)
 	// Check new location first, then legacy root location
 	if _, err := os.Stat(filepath.Join(dir, ".claude", "CLAUDE.md")); err == nil {
 		return true
@@ -116,7 +116,7 @@ func HasClaudeMD(name string) bool {
 }
 
 func RemoveRepo(projectName, repoName string) error {
-	repoPath := filepath.Join(config.ProjectsDir(), projectName, repoName)
+	repoPath := filepath.Join(paths.ProjectsDir(), projectName, repoName)
 	return os.RemoveAll(repoPath)
 }
 

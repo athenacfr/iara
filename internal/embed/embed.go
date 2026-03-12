@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/ahtwr/cw/internal/paths"
 )
 
 //go:embed all:files
@@ -32,13 +34,9 @@ func HooksDir() string {
 	return filepath.Join(installDir, "hooks")
 }
 
-// Install extracts embedded files to ~/.local/share/cw/.
+// Install extracts embedded files to the platform-specific data directory.
 func Install() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	return installToDir(filepath.Join(home, ".local", "share", "cw"))
+	return installToDir(paths.DataDir())
 }
 
 func installToDir(dest string) error {

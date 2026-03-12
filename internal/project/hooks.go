@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ahtwr/cw/internal/config"
+	"github.com/ahtwr/cw/internal/paths"
 )
 
 type hookEntry struct {
@@ -23,7 +23,7 @@ type hooksConfig struct {
 }
 
 func EnsureHooks(name, cwRoot string) error {
-	projectDir := filepath.Join(config.ProjectsDir(), name)
+	projectDir := filepath.Join(paths.ProjectsDir(), name)
 	claudeDir := filepath.Join(projectDir, ".claude")
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
 		return err

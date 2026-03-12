@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 )
 
@@ -26,15 +25,3 @@ func InitModes(modesDir string) {
 	}
 }
 
-func ProjectsDir() string {
-	dir := os.Getenv("CW_PROJECTS_DIR")
-	if dir != "" {
-		return dir
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "cw", "projects")
-}
-
-func EnsureProjectsDir() error {
-	return os.MkdirAll(ProjectsDir(), 0755)
-}

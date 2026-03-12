@@ -14,21 +14,16 @@ import (
 	"github.com/ahtwr/cw/internal/config"
 	cwembed "github.com/ahtwr/cw/internal/embed"
 	"github.com/ahtwr/cw/internal/env"
+	"github.com/ahtwr/cw/internal/paths"
 	"github.com/ahtwr/cw/internal/project"
 	"github.com/ahtwr/cw/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func uninstall() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	binary := filepath.Join(home, ".local", "bin", "cw")
-	dataDir := filepath.Join(home, ".local", "share", "cw")
-	projectsDir := config.ProjectsDir()
+	binary := filepath.Join(paths.BinDir(), "cw")
+	dataDir := paths.DataDir()
+	projectsDir := paths.ProjectsDir()
 
 	fmt.Println("This will remove:")
 	fmt.Printf("  • Binary:    %s\n", binary)
@@ -125,7 +120,7 @@ func main() {
 
 	config.InitModes(cwembed.ModesDir())
 
-	if err := config.EnsureProjectsDir(); err != nil {
+	if err := paths.EnsureProjectsDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating projects dir: %v\n", err)
 		os.Exit(1)
 	}

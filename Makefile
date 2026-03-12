@@ -1,5 +1,6 @@
-BINARY  := cw
-INSTALL := $(HOME)/.local/bin/$(BINARY)
+BINARY      := cw
+INSTALL_DIR ?= $(HOME)/.local/bin
+INSTALL     := $(INSTALL_DIR)/$(BINARY)
 
 .PHONY: build install clean
 

@@ -131,8 +131,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.launchConfig.SkipPermissions = true
 			return m, tea.Quit
 		}
+
+		// Use global bypass setting
+		bypass := m.projectList.bypassPerms
 		m.screen = screenModeSelect
-		m.modeSelect = newModeSelectModel()
+		m.modeSelect = newModeSelectModelWithBypass(bypass)
 		m.modeSelect.setSize(m.width, m.height)
 		return m, m.modeSelect.Init()
 

@@ -71,12 +71,20 @@ type projectListModel struct {
 	// Tree display — per-project expansion
 	expandedProjects map[string]bool
 
+	// Global bypass permissions (persisted)
+	bypassPerms bool
+
 	// All loaded projects (kept for preview)
 	projects []project.Project
 }
 
 func newProjectListModel() projectListModel {
-	return projectListModel{loading: true, expandedProjects: make(map[string]bool)}
+	s := project.LoadGlobalSettings()
+	return projectListModel{
+		loading:          true,
+		expandedProjects: make(map[string]bool),
+		bypassPerms:      s.BypassPermissions,
+	}
 }
 
 func (m projectListModel) Init() tea.Cmd {
@@ -273,6 +281,13 @@ func (m projectListModel) update(msg tea.Msg) (projectListModel, tea.Cmd) {
 					}
 				}
 				return m, nil
+			case "p":
+				// Toggle global bypass permissions
+				m.bypassPerms = !m.bypassPerms
+				project.SaveGlobalSettings(project.Settings{
+					BypassPermissions: m.bypassPerms,
+				})
+				return m, nil
 			case "d":
 				// Delete: project if on project row, repo if on repo row
 				if item := m.fzfList.SelectedItem(); item != nil {
@@ -413,7 +428,15 @@ func (m projectListModel) view() string {
 		return header + warning
 	}
 
-	return header + "\n" + m.fzfList.View()
+	var permLabel string
+	if m.bypassPerms {
+		permLabel = errorStyle.Render("bypass")
+	} else {
+		permLabel = successStyle.Render("normal")
+	}
+	keybar := keyStyle.Render("p") + dimStyle.Render("ermissions") + "  " + permLabel
+
+	return header + "\n" + m.fzfList.View() + "\n\n" + keybar
 }
 
 // Render callbacks

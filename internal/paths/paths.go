@@ -50,6 +50,18 @@ func EnvsDir() string {
 	return filepath.Join(home, "cw", "envs")
 }
 
+// ModeOverrideFile returns the path to the sideband file used to communicate
+// mode switches from a Claude session to the parent cw process during reload.
+func ModeOverrideFile() string {
+	return filepath.Join(DataDir(), "mode-override")
+}
+
+// PermissionsOverrideFile returns the path to the sideband file used to communicate
+// permission switches from a Claude session to the parent cw process during reload.
+func PermissionsOverrideFile() string {
+	return filepath.Join(DataDir(), "permissions-override")
+}
+
 // BinDir returns the directory where the cw binary is installed.
 // Override with CW_BIN_DIR env var.
 // Defaults: macOS /usr/local/bin, Linux/WSL ~/.local/bin

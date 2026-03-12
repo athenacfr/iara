@@ -21,6 +21,10 @@ type modeSelectModel struct {
 }
 
 func newModeSelectModel() modeSelectModel {
+	return newModeSelectModelWithBypass(true)
+}
+
+func newModeSelectModelWithBypass(bypass bool) modeSelectModel {
 	items := make([]FzfItem, len(config.Modes))
 	for i, m := range config.Modes {
 		items[i] = modeItem{m}
@@ -31,7 +35,7 @@ func newModeSelectModel() modeSelectModel {
 		Placeholder:  "No modes",
 		ListWidthPct: 0.4,
 	})
-	return modeSelectModel{fzfList: fzf, skipPermissions: true}
+	return modeSelectModel{fzfList: fzf, skipPermissions: bypass}
 }
 
 func (m modeSelectModel) Init() tea.Cmd {

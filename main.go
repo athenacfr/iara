@@ -80,6 +80,31 @@ func uninstall() {
 	}
 }
 
+func internalPermissionsSwitch(value string) {
+	if value != "bypass" && value != "normal" {
+		fmt.Fprintf(os.Stderr, "invalid permissions value: %s (use 'bypass' or 'normal')\n", value)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(paths.PermissionsOverrideFile(), []byte(value), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write permissions override: %v\n", err)
+		os.Exit(1)
+	}
+	internalReload()
+}
+
+func internalModeSwitch(modeName string) {
+	config.InitModes(cwembed.ModesDir())
+	if _, ok := config.GetMode(modeName); !ok {
+		fmt.Fprintf(os.Stderr, "unknown mode: %s\n", modeName)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(paths.ModeOverrideFile(), []byte(modeName), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write mode override: %v\n", err)
+		os.Exit(1)
+	}
+	internalReload()
+}
+
 func internalReload() {
 	pidStr := os.Getenv("CW_PID")
 	if pidStr == "" {
@@ -164,6 +189,16 @@ func main() {
 		return
 	}
 
+	if len(os.Args) > 3 && os.Args[1] == "internal" && os.Args[2] == "mode-switch" {
+		internalModeSwitch(os.Args[3])
+		return
+	}
+
+	if len(os.Args) > 3 && os.Args[1] == "internal" && os.Args[2] == "permissions-switch" {
+		internalPermissionsSwitch(os.Args[3])
+		return
+	}
+
 	// Extract embedded files (plugins, modes, hooks)
 	if err := cwembed.Install(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error installing embedded files: %v\n", err)
@@ -198,6 +233,11 @@ func main() {
 		if cfg.EditorMode {
 			openFolder(cfg.WorkDir)
 			continue
+		}
+
+		// Always resume the most recent conversation (unless launching with an initial prompt like onboarding)
+		if cfg.Prompt == "" {
+			cfg.Continue = true
 		}
 
 		// Reload loop: re-sync and re-launch with --continue on reload signal
@@ -254,9 +294,29 @@ func main() {
 				break
 			}
 
+			// Check for mode switch via sideband file
+			if modeData, err := os.ReadFile(paths.ModeOverrideFile()); err == nil {
+				modeName := strings.TrimSpace(string(modeData))
+				os.Remove(paths.ModeOverrideFile())
+				if m, ok := config.GetMode(modeName); ok {
+					cfg.Mode = m
+				}
+			}
+
+			// Check for permissions switch via sideband file
+			permOverride := false
+			if permData, err := os.ReadFile(paths.PermissionsOverrideFile()); err == nil {
+				permValue := strings.TrimSpace(string(permData))
+				os.Remove(paths.PermissionsOverrideFile())
+				cfg.SkipPermissions = permValue == "bypass"
+				permOverride = true
+			}
+
 			// Reload: clear one-shot fields, set --continue
 			cfg.Prompt = ""
-			cfg.SkipPermissions = false
+			if !permOverride {
+				cfg.SkipPermissions = false
+			}
 			cfg.Continue = true
 			cfg.SystemPrompts = nil
 		}

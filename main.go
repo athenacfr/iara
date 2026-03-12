@@ -4,12 +4,16 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 
-	cwembed "github.com/ahtwr/cw/internal/embed"
 	"github.com/ahtwr/cw/internal/claude"
 	"github.com/ahtwr/cw/internal/config"
+	cwembed "github.com/ahtwr/cw/internal/embed"
+	"github.com/ahtwr/cw/internal/env"
 	"github.com/ahtwr/cw/internal/project"
 	"github.com/ahtwr/cw/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -61,7 +65,6 @@ func uninstall() {
 		fmt.Fprintf(os.Stderr, "Warning: could not remove %s: %v\n", dataDir, err)
 	}
 
-	// If projects dir is outside the data dir (custom CW_PROJECTS_DIR), remove it too
 	if !strings.HasPrefix(projectsDir, dataDir) {
 		fmt.Print(fmt.Sprintf("\nAlso remove projects at %s? [y/N] ", projectsDir))
 		answer, _ = reader.ReadString('\n')
@@ -81,9 +84,36 @@ func uninstall() {
 	}
 }
 
+func internalReload() {
+	pidStr := os.Getenv("CW_PID")
+	if pidStr == "" {
+		fmt.Fprintln(os.Stderr, "CW_PID not set — not running inside cw")
+		os.Exit(1)
+	}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid CW_PID: %s\n", pidStr)
+		os.Exit(1)
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot find cw process %d: %v\n", pid, err)
+		os.Exit(1)
+	}
+	if err := proc.Signal(syscall.SIGUSR1); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot signal cw process: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "uninstall" {
 		uninstall()
+		return
+	}
+
+	if len(os.Args) > 2 && os.Args[1] == "internal" && os.Args[2] == "reload" {
+		internalReload()
 		return
 	}
 
@@ -117,22 +147,84 @@ func main() {
 
 		cfg := model.LaunchConfig()
 
-		if cfg.ProjectName != "" {
-			sysPrompt, err := project.EnsureSystemPrompt(cfg.ProjectName)
-			if err == nil {
-				cfg.SystemFiles = append(cfg.SystemFiles, sysPrompt)
+		// Editor mode: open repo folder with $VISUAL/$EDITOR and loop back to TUI
+		if cfg.EditorMode {
+			editor := os.Getenv("VISUAL")
+			if editor == "" {
+				editor = os.Getenv("EDITOR")
 			}
-
-			if cfg.Mode.Flag == "--append-system-prompt-file" && cfg.Mode.Value != "" {
-				cfg.SystemFiles = append(cfg.SystemFiles, cfg.Mode.Value)
+			if editor == "" {
+				editor = "vi"
 			}
-
-			// Use embedded hooks path
-			project.EnsureHooks(cfg.ProjectName, cwembed.Dir())
+			cmd := exec.Command(editor, cfg.WorkDir)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "editor exited: %v\n", err)
+			}
+			continue
 		}
 
-		if err := claude.Launch(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "claude exited: %v\n", err)
+		// Reload loop: re-sync and re-launch with --continue on reload signal
+		for {
+			var envWatcher *env.Watcher
+			if cfg.ProjectName != "" {
+				sysPrompt, err := project.BuildSystemPrompt(cfg.ProjectName)
+				if err == nil {
+					cfg.SystemPrompts = append(cfg.SystemPrompts, sysPrompt)
+				}
+
+				if cfg.Mode.Flag == "--append-system-prompt-file" && cfg.Mode.Value != "" {
+					data, err := os.ReadFile(cfg.Mode.Value)
+					if err == nil {
+						cfg.SystemPrompts = append(cfg.SystemPrompts, string(data))
+					}
+				}
+
+				// Add each repo as --add-dir so Claude loads their rules and CLAUDE.md
+				if p, err := project.Get(cfg.ProjectName); err == nil {
+					cfg.AddDirs = nil
+					for _, r := range p.Repos {
+						cfg.AddDirs = append(cfg.AddDirs, r.Path)
+					}
+				}
+
+				project.EnsureHooks(cfg.ProjectName, cwembed.Dir())
+				project.SyncCommands(cfg.ProjectName)
+
+				// Sync env files: merge .env.<repo>.global + .env.<repo>.override → repo/.env
+				// Then watch for changes and auto-regenerate while Claude runs.
+				if p, err := project.Get(cfg.ProjectName); err == nil {
+					var repoNames []string
+					for _, r := range p.Repos {
+						repoNames = append(repoNames, r.Name)
+					}
+					env.Sync(p.Path, repoNames)
+					if w, err := env.Watch(p.Path, repoNames); err == nil {
+						envWatcher = w
+					}
+				}
+			}
+
+			if err := claude.Launch(cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "claude exited: %v\n", err)
+			}
+
+			if envWatcher != nil {
+				envWatcher.Stop()
+				envWatcher = nil
+			}
+
+			if !claude.WasReload() {
+				break
+			}
+
+			// Reload: clear one-shot fields, set --continue
+			cfg.Prompt = ""
+			cfg.SkipPermissions = false
+			cfg.Continue = true
+			cfg.SystemPrompts = nil
 		}
 	}
 }

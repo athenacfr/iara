@@ -21,6 +21,9 @@ CW Commands
 /mode                   Show current mode
 /mode <name>            Switch mode (code, research, review, plan, tdd, debug, free)
 
+/manage-env             Open all project env files in $VISUAL/$EDITOR
+
+/cw:reload              Reload session (picks up new commands, rules, and config)
 /cw-help                Show this help
 
 Current Session

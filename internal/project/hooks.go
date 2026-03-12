@@ -29,7 +29,7 @@ func EnsureHooks(name, cwRoot string) error {
 		return err
 	}
 
-	hookScript := filepath.Join(cwRoot, "hooks", "pre-write-guard.sh")
+	preWriteGuard := filepath.Join(cwRoot, "hooks", "pre-write-guard.sh")
 
 	cfg := hooksConfig{
 		Hooks: map[string][]matcherGroup{
@@ -39,7 +39,7 @@ func EnsureHooks(name, cwRoot string) error {
 					Hooks: []hookEntry{
 						{
 							Type:    "command",
-							Command: hookScript,
+							Command: preWriteGuard,
 						},
 					},
 				},
@@ -53,5 +53,15 @@ func EnsureHooks(name, cwRoot string) error {
 	}
 
 	settingsPath := filepath.Join(claudeDir, "settings.json")
-	return os.WriteFile(settingsPath, data, 0644)
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		return err
+	}
+
+	// Ensure .gitignore exists to hide .claude/ from Claude's file selector
+	gitignorePath := filepath.Join(projectDir, ".gitignore")
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		os.WriteFile(gitignorePath, []byte(".*\n"), 0644)
+	}
+
+	return nil
 }

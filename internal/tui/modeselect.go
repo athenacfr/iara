@@ -15,8 +15,9 @@ type modeItem struct {
 func (m modeItem) FilterValue() string { return m.Name + " " + m.Description }
 
 type modeSelectModel struct {
-	fzfList       FzfListModel
-	width, height int
+	fzfList         FzfListModel
+	skipPermissions bool
+	width, height   int
 }
 
 func newModeSelectModel() modeSelectModel {
@@ -30,7 +31,7 @@ func newModeSelectModel() modeSelectModel {
 		Placeholder:  "No modes",
 		ListWidthPct: 0.4,
 	})
-	return modeSelectModel{fzfList: fzf}
+	return modeSelectModel{fzfList: fzf, skipPermissions: true}
 }
 
 func (m modeSelectModel) Init() tea.Cmd {
@@ -46,6 +47,11 @@ func (m *modeSelectModel) setSize(w, h int) {
 func (m modeSelectModel) update(msg tea.Msg) (modeSelectModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.String() == "tab" && !m.fzfList.IsSearching() {
+			m.skipPermissions = !m.skipPermissions
+			return m, nil
+		}
+
 		newList, consumed, result := m.fzfList.HandleKey(msg.String())
 		m.fzfList = newList
 
@@ -54,7 +60,7 @@ func (m modeSelectModel) update(msg tea.Msg) (modeSelectModel, tea.Cmd) {
 			case FzfConfirmMsg:
 				mi := r.Item.(modeItem)
 				return m, func() tea.Msg {
-					return modeSelectedMsg{mode: mi.Mode}
+					return modeSelectedMsg{mode: mi.Mode, skipPermissions: m.skipPermissions}
 				}
 			case FzfCancelMsg:
 				return m, func() tea.Msg {
@@ -72,7 +78,16 @@ func (m modeSelectModel) update(msg tea.Msg) (modeSelectModel, tea.Cmd) {
 
 func (m modeSelectModel) view() string {
 	header := titleStyle.Render("MODE") + "\n"
-	return header + "\n" + m.fzfList.View()
+
+	var permLabel string
+	if m.skipPermissions {
+		permLabel = successStyle.Render("skip permissions")
+	} else {
+		permLabel = dimStyle.Render("normal permissions")
+	}
+	keybar := renderKeybar(keyBind{"tab", "toggle permissions"}) + "  " + permLabel
+
+	return header + "\n" + m.fzfList.View() + "\n\n" + keybar
 }
 
 func renderModeItem(item FzfItem, index int, cursor, selected bool, matched []int) string {

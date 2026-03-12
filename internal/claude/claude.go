@@ -1,38 +1,61 @@
 package claude
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"os/signal"
 	"strings"
+	"sync/atomic"
+	"syscall"
 
 	"github.com/ahtwr/cw/internal/config"
 )
 
 type LaunchConfig struct {
-	WorkDir     string
-	ProjectName string
-	PluginDir   string
-	Mode        config.Mode
-	Prompt      string   // initial message (positional arg to claude)
-	SystemFiles []string // concatenated into one --append-system-prompt-file
+	WorkDir         string
+	ProjectName     string
+	PluginDir       string
+	Mode            config.Mode
+	Prompt          string   // initial message (positional arg to claude)
+	SystemPrompts   []string // prompt strings passed via --append-system-prompt
+	AddDirs         []string // repo paths passed via --add-dir (loads rules via env var)
+	SkipPermissions bool     // pass --dangerously-skip-permissions to claude
+	Continue        bool     // pass --continue to resume most recent conversation
+	EditorMode      bool     // open WorkDir with $EDITOR instead of launching claude
+}
+
+// reloadRequested is set when SIGUSR1 is received from `cw internal reload`
+var reloadRequested atomic.Bool
+
+// WasReload returns true if the last session ended due to a reload signal.
+func WasReload() bool {
+	return reloadRequested.Load()
 }
 
 func Launch(cfg LaunchConfig) error {
-	args := []string{"--dangerously-skip-permissions"}
+	reloadRequested.Store(false)
+
+	var args []string
+	if cfg.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
+	}
+
+	if cfg.Continue {
+		args = append(args, "--continue")
+	}
 
 	if cfg.PluginDir != "" {
 		args = append(args, "--plugin-dir", cfg.PluginDir)
 	}
 
-	// Concatenate system files into a single temp file
-	var tmpFile string
-	if len(cfg.SystemFiles) > 0 {
-		combined, err := combineSystemFiles(cfg.SystemFiles)
-		if err == nil && combined != "" {
-			tmpFile = combined
-			args = append(args, "--append-system-prompt-file", combined)
-		}
+	if len(cfg.SystemPrompts) > 0 {
+		combined := strings.Join(cfg.SystemPrompts, "\n\n---\n\n")
+		args = append(args, "--append-system-prompt", combined)
+	}
+
+	for _, dir := range cfg.AddDirs {
+		args = append(args, "--add-dir", dir)
 	}
 
 	// Initial prompt as positional arg (e.g., /cw:new-project for onboarding)
@@ -46,43 +69,50 @@ func Launch(cfg LaunchConfig) error {
 
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = cfg.WorkDir
+
+	// Pass CW_PID so `cw internal reload` can signal us
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("CW_PID=%d", os.Getpid()))
+	if cfg.ProjectName != "" {
+		env = append(env, fmt.Sprintf("CW_PROJECT_DIR=%s", cfg.WorkDir))
+		env = append(env, fmt.Sprintf("CW_PROJECT=%s", cfg.ProjectName))
+	}
+	if cfg.Mode.Name != "" {
+		env = append(env, fmt.Sprintf("CW_MODE=%s", cfg.Mode.Name))
+	}
+	if len(cfg.AddDirs) > 0 {
+		env = append(env, "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1")
+	}
+	cmd.Env = env
+
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	err := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Listen for SIGUSR1 (reload signal) and kill Claude when received
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGUSR1)
+	go func() {
+		<-sigCh
+		reloadRequested.Store(true)
+		cmd.Process.Signal(syscall.SIGTERM)
+	}()
+
+	err := cmd.Wait()
+
+	signal.Stop(sigCh)
 
 	// Clear screen after Claude exits
 	os.Stdout.WriteString("\033[H\033[2J")
 
-	if tmpFile != "" {
-		os.Remove(tmpFile)
+	// Suppress error if this was a reload
+	if reloadRequested.Load() {
+		return nil
 	}
 
 	return err
-}
-
-func combineSystemFiles(files []string) (string, error) {
-	var parts []string
-	for _, f := range files {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		parts = append(parts, strings.TrimSpace(string(data)))
-	}
-	if len(parts) == 0 {
-		return "", nil
-	}
-
-	tmpDir := filepath.Join(os.TempDir(), "cw")
-	os.MkdirAll(tmpDir, 0755)
-	tmp, err := os.CreateTemp(tmpDir, "system-prompt-*.md")
-	if err != nil {
-		return "", err
-	}
-	content := strings.Join(parts, "\n\n---\n\n")
-	tmp.WriteString(content)
-	tmp.Close()
-	return tmp.Name(), nil
 }

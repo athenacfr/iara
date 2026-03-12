@@ -1,10 +1,10 @@
 ---
-description: Set up a new cw project by creating a CLAUDE.md with project goals and conventions.
+description: Set up a new cw project by creating a .claude/CLAUDE.md with project goals and conventions.
 ---
 
 # New Project Setup
 
-This is a new cw project that doesn't have a CLAUDE.md yet. Explore the repo autonomously and create a CLAUDE.md.
+This is a new cw project that doesn't have a .claude/CLAUDE.md yet. Explore the repo autonomously and create a .claude/CLAUDE.md.
 
 ## Process
 
@@ -17,7 +17,7 @@ This is a new cw project that doesn't have a CLAUDE.md yet. Explore the repo aut
    - Look at git log for commit message style
 2. **Ask the user one question**: "What are you working on?" — get a brief description of what the project is and what it aims to do. This is the only user input needed.
 3. Present a concise summary of what you found and plan to save (structure, stack, conventions, rules). Ask the user to confirm before writing.
-4. Once confirmed, write the CLAUDE.md
+4. Once confirmed, write .claude/CLAUDE.md
 
 ## CLAUDE.md Format
 
@@ -44,9 +44,10 @@ Write the file with this structure (adapt based on what you find):
 
 ## Important
 
-- Write the CLAUDE.md using the Write tool
+- Write .claude/CLAUDE.md using Bash (e.g., `mkdir -p .claude && cat > .claude/CLAUDE.md << 'EOF' ... EOF`) — do NOT use the Write tool, as it is blocked by the write guard
 - Do NOT create any other files
 - Keep it concise — this is a reference doc, not a novel
 - Derive everything technical from the repo itself. Only ask the user what they're working on.
 - Do NOT mention CLAUDE.md to the user. Just present the summary and ask for confirmation.
-- After saving, say: "All set! Next time you open this project, cw will load this context automatically."
+- After saving, say: "All set! Reloading session to apply changes..."
+- Then immediately run `/cw:reload` to reload the session with the new configuration. Do NOT ask — just do it.

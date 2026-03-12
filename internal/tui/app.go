@@ -24,7 +24,10 @@ type repoSelectedMsg struct {
 	projectName string
 	repoName    string
 }
-type modeSelectedMsg struct{ mode config.Mode }
+type modeSelectedMsg struct {
+	mode            config.Mode
+	skipPermissions bool
+}
 type switchScreenMsg struct {
 	screen      screen
 	projectName string // used for edit screen
@@ -93,6 +96,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if r.Name == msg.repoName {
 				m.launchConfig.WorkDir = r.Path
 				m.launchConfig.ProjectName = msg.repoName
+				m.launchConfig.EditorMode = true
 
 				go func() {
 					ch := git.PullAll(full.Path, []string{msg.repoName})
@@ -124,6 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !project.HasClaudeMD(msg.project.Name) {
 			// No CLAUDE.md — launch onboarding, skip mode
 			m.launchConfig.Prompt = "/cw:new-project"
+			m.launchConfig.SkipPermissions = true
 			return m, tea.Quit
 		}
 		m.screen = screenModeSelect
@@ -134,6 +139,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modeSelectedMsg:
 		m.selectedMode = msg.mode
 		m.launchConfig.Mode = m.selectedMode
+		m.launchConfig.SkipPermissions = msg.skipPermissions
 		return m, tea.Quit
 
 	case switchScreenMsg:

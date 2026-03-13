@@ -62,6 +62,12 @@ func PermissionsOverrideFile() string {
 	return filepath.Join(DataDir(), "permissions-override")
 }
 
+// NewSessionFile returns the path to the sideband file that signals the reload
+// loop to start a fresh session instead of resuming with --continue.
+func NewSessionFile() string {
+	return filepath.Join(DataDir(), "new-session")
+}
+
 // BinDir returns the directory where the cw binary is installed.
 // Override with CW_BIN_DIR env var.
 // Defaults: macOS /usr/local/bin, Linux/WSL ~/.local/bin

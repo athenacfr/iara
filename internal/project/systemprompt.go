@@ -2,8 +2,6 @@ package project
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -64,11 +62,4 @@ func BuildSystemPrompt(name string) (string, error) {
 	return fmt.Sprintf(tmpl, strings.Join(repoList, "\n")), nil
 }
 
-func HasClaudeMDAt(projectDir string) bool {
-	if _, err := os.Stat(filepath.Join(projectDir, ".claude", "CLAUDE.md")); err == nil {
-		return true
-	}
-	_, err := os.Stat(filepath.Join(projectDir, "CLAUDE.md"))
-	return err == nil
-}
 

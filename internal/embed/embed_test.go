@@ -19,12 +19,9 @@ func TestInstallToDir(t *testing.T) {
 		"plugins/commands/worktree.md",
 		"plugins/commands/help.md",
 		"plugins/commands/mode.md",
-		"plugins/commands/new-project.md",
-		"modes/debug.md",
-		"modes/plan.md",
+		"plugins/commands/new-intention.md",
 		"modes/research.md",
 		"modes/review.md",
-		"modes/tdd.md",
 		"hooks/pre-write-guard.sh",
 	}
 

@@ -105,16 +105,6 @@ func Delete(name string) error {
 	return os.RemoveAll(dir)
 }
 
-func HasClaudeMD(name string) bool {
-	dir := filepath.Join(paths.ProjectsDir(), name)
-	// Check new location first, then legacy root location
-	if _, err := os.Stat(filepath.Join(dir, ".claude", "CLAUDE.md")); err == nil {
-		return true
-	}
-	_, err := os.Stat(filepath.Join(dir, "CLAUDE.md"))
-	return err == nil
-}
-
 func RemoveRepo(projectName, repoName string) error {
 	repoPath := filepath.Join(paths.ProjectsDir(), projectName, repoName)
 	return os.RemoveAll(repoPath)

@@ -125,10 +125,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} // drain the channel
 		}()
 
-		if !project.HasClaudeMD(msg.project.Name) {
-			// No CLAUDE.md — launch onboarding, skip mode
-			m.launchConfig.Prompt = "/cw:new-project"
+		if !project.HasMetadata(msg.project.Name) {
+			// No metadata — launch intention setup, skip mode
+			m.launchConfig.Prompt = "/cw:new-intention"
 			m.launchConfig.SkipPermissions = true
+			m.launchConfig.AutoSetup = true
 			return m, tea.Quit
 		}
 

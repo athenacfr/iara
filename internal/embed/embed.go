@@ -42,7 +42,23 @@ func Install() error {
 func installToDir(dest string) error {
 	installDir = dest
 
-	return fs.WalkDir(embeddedFS, "files", func(path string, d fs.DirEntry, err error) error {
+	// Build set of embedded file paths
+	embedded := make(map[string]bool)
+	if err := fs.WalkDir(embeddedFS, "files", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			rel, _ := filepath.Rel("files", path)
+			embedded[rel] = true
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// Write all embedded files
+	if err := fs.WalkDir(embeddedFS, "files", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -64,5 +80,25 @@ func installToDir(dest string) error {
 		}
 
 		return os.WriteFile(target, data, 0o755)
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Clean up files on disk that are no longer embedded
+	managedDirs := []string{"plugins", "modes", "hooks"}
+	for _, dir := range managedDirs {
+		dirPath := filepath.Join(dest, dir)
+		filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			rel, _ := filepath.Rel(dest, path)
+			if !embedded[rel] {
+				os.Remove(path)
+			}
+			return nil
+		})
+	}
+
+	return nil
 }

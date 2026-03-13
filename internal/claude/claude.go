@@ -23,6 +23,7 @@ type LaunchConfig struct {
 	SkipPermissions bool     // pass --dangerously-skip-permissions to claude
 	Continue        bool     // pass --continue to resume most recent conversation
 	EditorMode      bool     // open WorkDir with $EDITOR instead of launching claude
+	AutoSetup       bool     // set CW_AUTO_SETUP=1 so skills know cw auto-invoked them
 }
 
 // reloadRequested is set when SIGUSR1 is received from `cw internal reload`
@@ -58,9 +59,9 @@ func Launch(cfg LaunchConfig) error {
 		args = append(args, "--add-dir", dir)
 	}
 
-	// Initial prompt as positional arg (e.g., /cw:new-project for onboarding)
+	// Initial prompt as positional arg (e.g., /cw:new-intention for onboarding)
 	if cfg.Prompt != "" {
-		args = append(args, cfg.Prompt)
+		args = append(args, "--", cfg.Prompt)
 	}
 
 	// Clear screen and position cursor at top-left before launching Claude
@@ -79,6 +80,9 @@ func Launch(cfg LaunchConfig) error {
 	}
 	if cfg.Mode.Name != "" {
 		env = append(env, fmt.Sprintf("CW_MODE=%s", cfg.Mode.Name))
+	}
+	if cfg.AutoSetup {
+		env = append(env, "CW_AUTO_SETUP=1")
 	}
 	if len(cfg.AddDirs) > 0 {
 		env = append(env, "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1")

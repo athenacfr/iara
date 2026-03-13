@@ -19,7 +19,7 @@ CW Commands
 /cw remove <branch>     Remove a worktree
 
 /mode                   Show current mode
-/mode <name>            Switch mode (code, research, review, plan, tdd, debug, free)
+/mode <name>            Switch mode (code, research, review, none)
 
 /manage-env             Open all project env files in $VISUAL/$EDITOR
 

@@ -64,23 +64,13 @@ Switch with: /mode <name>
 
 1. Validate the mode name is one of: code, research, review, plan, tdd, debug, free
 2. If invalid, show the available modes list
-3. If valid, acknowledge the switch and immediately adopt the new behavior:
-   - For `research`: remind yourself you are now READ-ONLY
-   - For `review`: run `/code-review`
-   - For `plan`: run `/plan`
-   - For `tdd`: run `/tdd`
-   - For `code`/`free`: acknowledge and continue normally
-   - For `debug`: state that you'll focus on diagnosis before fixes
-
-Display:
-```
-Switched to <mode> mode.
-<one-line description of what this means>
-```
+3. If valid, trigger a reload with the new mode's system prompt:
+   - Display: `Switching to <mode> mode... reloading session.`
+   - Run: `cw internal mode-switch <mode-name>`
+   - Do NOT do anything else after running the command. The session will restart with `--continue` and the correct mode system prompt injected.
 
 ## Important
 
-- Mode switches are immediate — adopt the new behavior right away
-- The `research` mode is strict: absolutely no file edits, no Write, no Edit tools
-- Modes persist for the rest of the session unless switched again
+- Mode switches trigger a session reload so the correct system prompt is injected
+- The session resumes automatically with `--continue` — no context is lost
 - If CW_MODE env var is set (by the cw launcher), that was the initial mode

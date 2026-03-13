@@ -565,6 +565,20 @@ func projectDetailPreview(name string, width, height int) string {
 	}
 	lines = append(lines, "")
 
+	// Show saved metadata
+	if meta, err := project.LoadMetadata(name); err == nil {
+		if meta.Title != "" {
+			lines = append(lines, accentStyle.Render(meta.Title))
+			lines = append(lines, "")
+		}
+		if meta.Description != "" {
+			for _, dl := range strings.Split(meta.Description, "\n") {
+				lines = append(lines, dimStyle.Render(dl))
+			}
+			lines = append(lines, "")
+		}
+	}
+
 	for _, r := range full.Repos {
 		line := "  " + accentStyle.Render(r.Name) + dimStyle.Render(" on ") + r.Branch
 		if len(r.DirtyFiles) > 0 {

@@ -105,6 +105,26 @@ func internalModeSwitch(modeName string) {
 	internalReload()
 }
 
+func internalSaveMetadata(jsonStr string) {
+	projectDir := os.Getenv("CW_PROJECT_DIR")
+	if projectDir == "" {
+		fmt.Fprintln(os.Stderr, "CW_PROJECT_DIR not set — not running inside cw")
+		os.Exit(1)
+	}
+	if err := project.SaveMetadata(projectDir, jsonStr); err != nil {
+		fmt.Fprintf(os.Stderr, "save-metadata: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func internalNewSession() {
+	if err := os.WriteFile(paths.NewSessionFile(), []byte("1"), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write new-session file: %v\n", err)
+		os.Exit(1)
+	}
+	internalReload()
+}
+
 func internalReload() {
 	pidStr := os.Getenv("CW_PID")
 	if pidStr == "" {
@@ -189,6 +209,11 @@ func main() {
 		return
 	}
 
+	if len(os.Args) > 2 && os.Args[1] == "internal" && os.Args[2] == "new-session" {
+		internalNewSession()
+		return
+	}
+
 	if len(os.Args) > 3 && os.Args[1] == "internal" && os.Args[2] == "mode-switch" {
 		internalModeSwitch(os.Args[3])
 		return
@@ -196,6 +221,11 @@ func main() {
 
 	if len(os.Args) > 3 && os.Args[1] == "internal" && os.Args[2] == "permissions-switch" {
 		internalPermissionsSwitch(os.Args[3])
+		return
+	}
+
+	if len(os.Args) > 3 && os.Args[1] == "internal" && os.Args[2] == "save-metadata" {
+		internalSaveMetadata(os.Args[3])
 		return
 	}
 
@@ -247,6 +277,11 @@ func main() {
 				sysPrompt, err := project.BuildSystemPrompt(cfg.ProjectName)
 				if err == nil {
 					cfg.SystemPrompts = append(cfg.SystemPrompts, sysPrompt)
+				}
+
+				// Inject instructions from project metadata
+				if meta, err := project.LoadMetadata(cfg.ProjectName); err == nil && meta.Instructions != "" {
+					cfg.SystemPrompts = append(cfg.SystemPrompts, meta.Instructions)
 				}
 
 				if cfg.Mode.Flag == "--append-system-prompt-file" && cfg.Mode.Value != "" {
@@ -304,20 +339,23 @@ func main() {
 			}
 
 			// Check for permissions switch via sideband file
-			permOverride := false
 			if permData, err := os.ReadFile(paths.PermissionsOverrideFile()); err == nil {
 				permValue := strings.TrimSpace(string(permData))
 				os.Remove(paths.PermissionsOverrideFile())
 				cfg.SkipPermissions = permValue == "bypass"
-				permOverride = true
 			}
 
-			// Reload: clear one-shot fields, set --continue
-			cfg.Prompt = ""
-			if !permOverride {
-				cfg.SkipPermissions = false
+			// Check for new-session request via sideband file
+			newSession := false
+			if _, err := os.Stat(paths.NewSessionFile()); err == nil {
+				os.Remove(paths.NewSessionFile())
+				newSession = true
 			}
-			cfg.Continue = true
+
+			// Reload: clear one-shot fields
+			cfg.Prompt = ""
+			cfg.Continue = !newSession
+			cfg.AutoSetup = false
 			cfg.SystemPrompts = nil
 		}
 	}

@@ -74,6 +74,9 @@ func Sync(projectDir string, repoNames []string) error {
 		if err := os.WriteFile(target, []byte(merged), 0644); err != nil {
 			return fmt.Errorf("write .env for %s: %w", name, err)
 		}
+
+		// Ensure .env is in repo's .gitignore
+		ensureGitignoreEntry(filepath.Join(projectDir, name, ".gitignore"), ".env")
 	}
 
 	return nil
@@ -90,6 +93,29 @@ func FilesForProject(projectDir string, repoNames []string) []string {
 		files = append(files, OverridePath(projectDir, name))
 	}
 	return files
+}
+
+func ensureGitignoreEntry(path, entry string) {
+	repoDir := filepath.Dir(path)
+	// Only create .gitignore if this is a git repo
+	if _, err := os.Stat(filepath.Join(repoDir, ".git")); os.IsNotExist(err) {
+		return
+	}
+	content, _ := os.ReadFile(path)
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.TrimSpace(line) == entry {
+			return
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if len(content) > 0 && !strings.HasSuffix(string(content), "\n") {
+		f.WriteString("\n")
+	}
+	f.WriteString(entry + "\n")
 }
 
 func ensureFile(path string) {

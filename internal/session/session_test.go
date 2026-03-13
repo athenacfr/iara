@@ -969,6 +969,212 @@ func TestExtractAssistantTextNil(t *testing.T) {
 	}
 }
 
+// --- newestJSONL ---
+
+func TestNewestJSONL(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create older file
+	writeJSONL(t, filepath.Join(dir, "old.jsonl"), []map[string]any{
+		{"type": "user", "message": map[string]any{"role": "user", "content": "old"}},
+	})
+	time.Sleep(50 * time.Millisecond)
+
+	// Create newer file
+	writeJSONL(t, filepath.Join(dir, "new.jsonl"), []map[string]any{
+		{"type": "user", "message": map[string]any{"role": "user", "content": "new"}},
+	})
+
+	got := newestJSONL(dir)
+	if !strings.HasSuffix(got, "new.jsonl") {
+		t.Errorf("newestJSONL = %q, want new.jsonl", got)
+	}
+}
+
+func TestNewestJSONLEmpty(t *testing.T) {
+	dir := t.TempDir()
+	got := newestJSONL(dir)
+	if got != "" {
+		t.Errorf("newestJSONL(empty dir) = %q, want empty", got)
+	}
+}
+
+func TestNewestJSONLMissing(t *testing.T) {
+	got := newestJSONL("/nonexistent/path")
+	if got != "" {
+		t.Errorf("newestJSONL(missing) = %q, want empty", got)
+	}
+}
+
+// --- extractRichMessages ---
+
+func TestExtractRichMessagesBasic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	entries := []map[string]any{
+		{"type": "user", "message": map[string]any{"role": "user", "content": "Fix the bug"}},
+		{"type": "assistant", "message": map[string]any{"role": "assistant", "content": []any{
+			map[string]any{"type": "text", "text": "I'll fix it."},
+		}}},
+	}
+	writeJSONL(t, path, entries)
+
+	msgs := extractRichMessages(path, 20, 2000)
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[0].Text != "Fix the bug" {
+		t.Errorf("msg[0] = %q", msgs[0].Text)
+	}
+	if msgs[1].Text != "I'll fix it." {
+		t.Errorf("msg[1] = %q", msgs[1].Text)
+	}
+}
+
+func TestExtractRichMessagesIncludesToolUse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	entries := []map[string]any{
+		{"type": "assistant", "message": map[string]any{"role": "assistant", "content": []any{
+			map[string]any{"type": "text", "text": "Let me read that."},
+			map[string]any{"type": "tool_use", "name": "Read", "input": map[string]any{"file_path": "/foo/bar.go"}},
+			map[string]any{"type": "text", "text": "Found the issue."},
+		}}},
+	}
+	writeJSONL(t, path, entries)
+
+	msgs := extractRichMessages(path, 20, 2000)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if !strings.Contains(msgs[0].Text, "[Used tool: Read /foo/bar.go]") {
+		t.Errorf("expected tool summary, got %q", msgs[0].Text)
+	}
+	if !strings.Contains(msgs[0].Text, "Let me read that.") {
+		t.Errorf("expected text content, got %q", msgs[0].Text)
+	}
+}
+
+func TestExtractRichMessagesLimitsCount(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	var entries []map[string]any
+	for i := 0; i < 30; i++ {
+		entries = append(entries, map[string]any{
+			"type":    "user",
+			"message": map[string]any{"role": "user", "content": "msg " + itoa(i)},
+		})
+	}
+	writeJSONL(t, path, entries)
+
+	msgs := extractRichMessages(path, 5, 2000)
+	if len(msgs) != 5 {
+		t.Errorf("expected 5 messages, got %d", len(msgs))
+	}
+	// Should be the last 5
+	if msgs[0].Text != "msg 25" {
+		t.Errorf("expected msg 25, got %q", msgs[0].Text)
+	}
+}
+
+func TestExtractRichMessagesMissingFile(t *testing.T) {
+	msgs := extractRichMessages("/nonexistent/path.jsonl", 20, 2000)
+	if msgs != nil {
+		t.Errorf("expected nil for missing file, got %d msgs", len(msgs))
+	}
+}
+
+// --- extractRichAssistantText ---
+
+func TestExtractRichAssistantTextToolUseBash(t *testing.T) {
+	content := []any{
+		map[string]any{"type": "tool_use", "name": "Bash", "input": map[string]any{"command": "go test ./..."}},
+	}
+	got := extractRichAssistantText(content, 2000)
+	if got != "[Used tool: Bash go test ./...]" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestExtractRichAssistantTextNonArray(t *testing.T) {
+	got := extractRichAssistantText("not an array", 2000)
+	if got != "" {
+		t.Errorf("expected empty for non-array, got %q", got)
+	}
+}
+
+func TestExtractRichAssistantTextTruncates(t *testing.T) {
+	content := []any{
+		map[string]any{"type": "text", "text": strings.Repeat("x", 3000)},
+	}
+	got := extractRichAssistantText(content, 100)
+	if len(got) != 103 { // 100 + "..."
+		t.Errorf("expected 103 chars, got %d", len(got))
+	}
+}
+
+// --- buildRawContext ---
+
+func TestBuildRawContextCapsTotalLength(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	projectDir := "/test-build-raw-context"
+	encoded := strings.ReplaceAll(projectDir, "/", "-")
+	sessionDir := filepath.Join(home, ".claude", "projects", encoded)
+	os.MkdirAll(sessionDir, 0755)
+	defer os.RemoveAll(sessionDir)
+
+	// Create a session with lots of long messages
+	var entries []map[string]any
+	longText := strings.Repeat("a", 2000)
+	for i := 0; i < 20; i++ {
+		entries = append(entries, map[string]any{
+			"type":    "user",
+			"message": map[string]any{"role": "user", "content": longText},
+		})
+	}
+	writeJSONL(t, filepath.Join(sessionDir, "sess.jsonl"), entries)
+
+	got := buildRawContext(projectDir)
+	if len(got) > 10000 {
+		t.Errorf("expected capped at 10000 chars, got %d", len(got))
+	}
+}
+
+func TestBuildRawContextEmpty(t *testing.T) {
+	got := buildRawContext("/nonexistent-project-for-test")
+	if got != "" {
+		t.Errorf("expected empty for missing project, got %q", got)
+	}
+}
+
+// --- AnalyzeContext ---
+
+func TestAnalyzeContextNoClaude(t *testing.T) {
+	// Set PATH to empty so claude won't be found
+	t.Setenv("PATH", t.TempDir())
+	_, err := AnalyzeContext("/some/dir")
+	if err == nil {
+		t.Error("expected error when claude not in PATH")
+	}
+	if !strings.Contains(err.Error(), "claude not in PATH") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAnalyzeContextNoSession(t *testing.T) {
+	// claude is in PATH but no session data exists
+	_, err := AnalyzeContext("/nonexistent-project-for-analyze-test")
+	if err == nil {
+		t.Error("expected error for missing session")
+	}
+	if !strings.Contains(err.Error(), "no session context") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 // --- helpers ---
 
 func writeJSONL(t *testing.T, path string, entries []map[string]any) {

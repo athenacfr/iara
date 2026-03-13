@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -202,7 +203,7 @@ func main() {
 		case "new-session":
 			internalNewSession()
 			return
-		case "auto-compact", "force-compact":
+		case "auto-compact", "compact-and-continue":
 			internalAutoCompact()
 			return
 		case "mode-switch":
@@ -325,8 +326,18 @@ func main() {
 				}
 			}
 
+			// Show spinner during quiet compact (Phase 1 of auto-compact)
+			var stopSpinner func()
+			if cfg.Quiet {
+				stopSpinner = showCompactSpinner()
+			}
+
 			if err := claude.Launch(cfg); err != nil {
 				fmt.Fprintf(os.Stderr, "claude exited: %v\n", err)
+			}
+
+			if stopSpinner != nil {
+				stopSpinner()
 			}
 
 			if envWatcher != nil {
@@ -378,6 +389,7 @@ func main() {
 			// Reload: clear one-shot fields
 			cfg.Prompt = ""
 			cfg.Print = false
+			cfg.Quiet = false
 
 			// Check for pending compact context from a previous Phase 1
 			if ctxData, err := os.ReadFile(paths.CompactContextFile()); err == nil {
@@ -388,13 +400,18 @@ func main() {
 
 			if autoCompact {
 				// Two-phase auto-compact:
-				// Phase 1: extract task context, run /compact in print mode (exits immediately)
+				// Phase 1: analyze context + run /compact in print mode (exits immediately)
 				// Phase 2: on next reload iteration, send the context as continuation prompt
-				if ctx := session.ExtractRecentContext(cfg.WorkDir, 5); ctx != "" {
+				ctx, err := session.AnalyzeContext(cfg.WorkDir)
+				if err != nil || ctx == "" {
+					ctx = session.ExtractRecentContext(cfg.WorkDir, 5)
+				}
+				if ctx != "" {
 					os.WriteFile(paths.CompactContextFile(), []byte(ctx), 0644)
 				}
 				cfg.Prompt = "/compact"
 				cfg.Print = true
+				cfg.Quiet = true
 			}
 
 			cfg.Resume = !newSession
@@ -402,5 +419,36 @@ func main() {
 			cfg.AutoSetup = false
 			cfg.SystemPrompts = nil
 		}
+	}
+}
+
+// showCompactSpinner displays a terminal spinner while auto-compact runs.
+// Returns a stop function that clears the spinner line.
+func showCompactSpinner() func() {
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	var once sync.Once
+	done := make(chan struct{})
+
+	go func() {
+		i := 0
+		ticker := time.NewTicker(80 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				fmt.Fprintf(os.Stdout, "\r\033[K  \033[36m%s\033[0m Compacting context...", frames[i%len(frames)])
+				i++
+			}
+		}
+	}()
+
+	return func() {
+		once.Do(func() {
+			close(done)
+			fmt.Fprint(os.Stdout, "\r\033[K")
+		})
 	}
 }

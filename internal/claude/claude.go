@@ -27,6 +27,7 @@ type LaunchConfig struct {
 	AutoSetup        bool     // set CW_AUTO_SETUP=1 so skills know cw auto-invoked them
 	AutoCompactLimit int      // 0=off, 40/50/60/70/80 — context % threshold for auto-compact
 	Print            bool     // run in non-interactive mode (-p): process prompt and exit
+	Quiet            bool     // suppress stdout (used during auto-compact)
 }
 
 // reloadRequested is set when SIGUSR1 is received from `cw internal reload`
@@ -73,8 +74,10 @@ func Launch(cfg LaunchConfig) error {
 	}
 
 	// Clear screen and position cursor at top-left before launching Claude
-	os.Stdout.WriteString("\033[H\033[2J\033[H")
-	os.Stdout.Sync()
+	if !cfg.Quiet {
+		os.Stdout.WriteString("\033[H\033[2J\033[H")
+		os.Stdout.Sync()
+	}
 
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = cfg.WorkDir
@@ -101,8 +104,13 @@ func Launch(cfg LaunchConfig) error {
 	cmd.Env = env
 
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if cfg.Quiet {
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
 	if err := cmd.Start(); err != nil {
 		return err
@@ -122,7 +130,9 @@ func Launch(cfg LaunchConfig) error {
 	signal.Stop(sigCh)
 
 	// Clear screen after Claude exits
-	os.Stdout.WriteString("\033[H\033[2J")
+	if !cfg.Quiet {
+		os.Stdout.WriteString("\033[H\033[2J")
+	}
 
 	// Suppress error if this was a reload
 	if reloadRequested.Load() {

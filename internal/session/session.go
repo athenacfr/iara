@@ -2,8 +2,12 @@ package session
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -269,6 +273,218 @@ func ExtractRecentContext(projectDir string, maxMessages int) string {
 		b.WriteString("\n\n")
 	}
 	return b.String()
+}
+
+// AnalyzeContext uses `claude -p` to intelligently analyze recent session
+// messages and produce a precise continuation prompt. Falls back to error
+// if claude is unavailable, times out, or produces empty output.
+func AnalyzeContext(projectDir string) (string, error) {
+	if _, err := exec.LookPath("claude"); err != nil {
+		return "", fmt.Errorf("claude not in PATH: %w", err)
+	}
+
+	raw := buildRawContext(projectDir)
+	if raw == "" {
+		return "", fmt.Errorf("no session context found")
+	}
+
+	prompt := `You are analyzing a Claude Code session that was interrupted by auto-compact.
+Your job is to produce a continuation prompt that will let Claude resume exactly where it left off.
+
+Here is the recent conversation:
+---
+` + raw + `
+---
+
+Instructions:
+1. Identify the high-level task the user requested.
+2. Determine what has been completed so far.
+3. If a multi-step plan was being executed, identify which step was in progress or next.
+4. Note any specific files, functions, or details that are critical context.
+5. Produce a continuation prompt (max 500 words) that starts with "Auto-compact was triggered. Continue where you left off." followed by a precise summary of the task state.
+
+Output ONLY the continuation prompt, nothing else.`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "claude", "-p")
+	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Dir = projectDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("claude -p failed: %w", err)
+	}
+
+	result := strings.TrimSpace(stdout.String())
+	if len(result) < 20 {
+		return "", fmt.Errorf("claude -p returned insufficient output (%d chars)", len(result))
+	}
+
+	return result, nil
+}
+
+// buildRawContext finds the newest session JSONL and extracts recent messages
+// with tool-use summaries, capped at maxRawContextChars total.
+func buildRawContext(projectDir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	encoded := strings.ReplaceAll(projectDir, "/", "-")
+	sessionDir := filepath.Join(home, ".claude", "projects", encoded)
+
+	newest := newestJSONL(sessionDir)
+	if newest == "" {
+		return ""
+	}
+
+	msgs := extractRichMessages(newest, 20, 2000)
+	if len(msgs) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	for _, m := range msgs {
+		if m.Role == "user" {
+			b.WriteString("User: ")
+		} else {
+			b.WriteString("Assistant: ")
+		}
+		b.WriteString(m.Text)
+		b.WriteString("\n\n")
+	}
+
+	result := b.String()
+	const maxRawContextChars = 10000
+	if len(result) > maxRawContextChars {
+		result = result[len(result)-maxRawContextChars:]
+	}
+	return result
+}
+
+// newestJSONL returns the path to the most recently modified .jsonl file
+// in the given directory, or "" if none found.
+func newestJSONL(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	var newest string
+	var newestTime time.Time
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+			continue
+		}
+		info, err := f.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(newestTime) {
+			newestTime = info.ModTime()
+			newest = filepath.Join(dir, f.Name())
+		}
+	}
+	return newest
+}
+
+// extractRichMessages reads a session JSONL and returns the last maxMessages
+// messages with higher character limits and tool-use summaries included.
+func extractRichMessages(path string, maxMessages int, maxCharPerMsg int) []message {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var msgs []message
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		var entry struct {
+			Type    string `json:"type"`
+			Message struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			continue
+		}
+
+		switch entry.Type {
+		case "user":
+			if text := extractUserText(entry.Message.Content); text != "" {
+				cleaned := cleanSummary(text, maxCharPerMsg)
+				if cleaned != "" {
+					msgs = append(msgs, message{Role: "user", Text: cleaned})
+				}
+			}
+		case "assistant":
+			text := extractRichAssistantText(entry.Message.Content, maxCharPerMsg)
+			if text != "" {
+				msgs = append(msgs, message{Role: "assistant", Text: text})
+			}
+		}
+	}
+
+	if len(msgs) > maxMessages {
+		msgs = msgs[len(msgs)-maxMessages:]
+	}
+	return msgs
+}
+
+// extractRichAssistantText collects text blocks and tool-use summaries from
+// an assistant message, giving a richer picture of what was happening.
+func extractRichAssistantText(content any, maxChars int) string {
+	items, ok := content.([]any)
+	if !ok {
+		return ""
+	}
+	var parts []string
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch m["type"] {
+		case "text":
+			if t, ok := m["text"].(string); ok && strings.TrimSpace(t) != "" {
+				parts = append(parts, strings.TrimSpace(t))
+			}
+		case "tool_use":
+			name, _ := m["name"].(string)
+			if name != "" {
+				summary := "[Used tool: " + name
+				if input, ok := m["input"].(map[string]any); ok {
+					if fp, ok := input["file_path"].(string); ok {
+						summary += " " + fp
+					} else if cmd, ok := input["command"].(string); ok {
+						if len(cmd) > 100 {
+							cmd = cmd[:100] + "..."
+						}
+						summary += " " + cmd
+					}
+				}
+				summary += "]"
+				parts = append(parts, summary)
+			}
+		}
+	}
+
+	result := strings.Join(parts, " ")
+	if len(result) > maxChars {
+		result = result[:maxChars] + "..."
+	}
+	return result
 }
 
 // extractMessages reads a session JSONL and returns the last N user+assistant

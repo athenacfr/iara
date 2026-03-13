@@ -2,13 +2,13 @@ package commands
 
 func init() {
 	Register(Command{
-		Name:        "force_compact",
-		Description: "Force compact the current session context immediately.",
-		CLICommand:  "force-compact",
+		Name:        "compact-and-continue",
+		Description: "Compact the current session context and continue where you left off.",
+		CLICommand:  "compact-and-continue",
 	})
 
 	Register(Command{
-		Name:        "new_session",
+		Name:        "new-session",
 		Description: "Close the current session and start a fresh one with updated configuration.",
 		CLICommand:  "new-session",
 	})
@@ -20,13 +20,13 @@ func init() {
 	})
 
 	Register(Command{
-		Name:        "open_project",
+		Name:        "open-project",
 		Description: "Open the project root directory in the system editor or file explorer.",
 		CLICommand:  "open-project",
 	})
 
 	Register(Command{
-		Name:        "switch_mode",
+		Name:        "switch-mode",
 		Description: "Switch Claude's behavioral mode mid-session. The session will reload with the new mode's system prompt.",
 		CLICommand:  "mode-switch",
 		Params: map[string]ParamDef{
@@ -40,7 +40,7 @@ func init() {
 	})
 
 	Register(Command{
-		Name:        "switch_permissions",
+		Name:        "switch-permissions",
 		Description: "Switch Claude's permission mode mid-session. The session will reload with the new permission setting.",
 		CLICommand:  "permissions-switch",
 		Params: map[string]ParamDef{
@@ -54,7 +54,7 @@ func init() {
 	})
 
 	Register(Command{
-		Name:        "save_metadata",
+		Name:        "save-metadata",
 		Description: "Save project metadata (title, description, instructions) for the current cw project.",
 		CLICommand:  "save-metadata",
 		Params: map[string]ParamDef{
@@ -232,7 +232,7 @@ CW Commands
 /permissions            Show current permissions mode
 /permissions <value>    Switch permissions (bypass, normal)
 
-/cw:force-compact       Force compact the current session context
+/cw:compact-and-continue  Compact context and continue where you left off
 /cw:new-session         Start a fresh session
 /cw:reload              Reload session (picks up new commands, rules, and config)
 /cw:open-project        Open project folder in editor

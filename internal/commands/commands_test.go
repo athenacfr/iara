@@ -14,13 +14,13 @@ func TestRegisteredCommands(t *testing.T) {
 
 func TestRequiredCommandsExist(t *testing.T) {
 	required := []string{
-		"force_compact",
-		"new_session",
+		"compact-and-continue",
+		"new-session",
 		"reload",
-		"open_project",
-		"switch_mode",
-		"switch_permissions",
-		"save_metadata",
+		"open-project",
+		"switch-mode",
+		"switch-permissions",
+		"save-metadata",
 		"mode",
 		"permissions",
 		"help",
@@ -43,7 +43,7 @@ func TestRequiredCommandsExist(t *testing.T) {
 
 func TestCLICommandsHaveCLICommand(t *testing.T) {
 	// Commands that map to internal CLI should have CLICommand set
-	cliCommands := []string{"force_compact", "new_session", "reload", "open_project", "switch_mode", "switch_permissions", "save_metadata"}
+	cliCommands := []string{"compact-and-continue", "new-session", "reload", "open-project", "switch-mode", "switch-permissions", "save-metadata"}
 
 	byName := commandsByName()
 	for _, name := range cliCommands {
@@ -103,14 +103,14 @@ func TestNoDuplicateCommandNames(t *testing.T) {
 
 func TestSwitchModeHasParams(t *testing.T) {
 	byName := commandsByName()
-	cmd := byName["switch_mode"]
+	cmd := byName["switch-mode"]
 
 	if cmd.Params == nil {
-		t.Fatal("switch_mode should have params")
+		t.Fatal("switch-mode should have params")
 	}
 	modeDef, ok := cmd.Params["mode"]
 	if !ok {
-		t.Fatal("switch_mode should have 'mode' param")
+		t.Fatal("switch-mode should have 'mode' param")
 	}
 	if !modeDef.Required {
 		t.Error("mode param should be required")
@@ -122,14 +122,14 @@ func TestSwitchModeHasParams(t *testing.T) {
 
 func TestSwitchPermissionsHasParams(t *testing.T) {
 	byName := commandsByName()
-	cmd := byName["switch_permissions"]
+	cmd := byName["switch-permissions"]
 
 	if cmd.Params == nil {
-		t.Fatal("switch_permissions should have params")
+		t.Fatal("switch-permissions should have params")
 	}
 	valueDef, ok := cmd.Params["value"]
 	if !ok {
-		t.Fatal("switch_permissions should have 'value' param")
+		t.Fatal("switch-permissions should have 'value' param")
 	}
 	if !valueDef.Required {
 		t.Error("value param should be required")
@@ -141,14 +141,14 @@ func TestSwitchPermissionsHasParams(t *testing.T) {
 
 func TestSaveMetadataHasParams(t *testing.T) {
 	byName := commandsByName()
-	cmd := byName["save_metadata"]
+	cmd := byName["save-metadata"]
 
 	if cmd.Params == nil {
-		t.Fatal("save_metadata should have params")
+		t.Fatal("save-metadata should have params")
 	}
 	jsonDef, ok := cmd.Params["json"]
 	if !ok {
-		t.Fatal("save_metadata should have 'json' param")
+		t.Fatal("save-metadata should have 'json' param")
 	}
 	if !jsonDef.Required {
 		t.Error("json param should be required")

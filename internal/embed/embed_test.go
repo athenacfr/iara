@@ -171,7 +171,7 @@ func TestGeneratedCommandPlugins(t *testing.T) {
 	commandsDir := filepath.Join(tmp, "plugins", "commands")
 
 	// CLI commands should generate .md files with "cw internal" invocation
-	cliGenerated := []string{"force_compact.md", "new_session.md", "reload.md", "open_project.md"}
+	cliGenerated := []string{"compact-and-continue.md", "new-session.md", "reload.md", "open-project.md"}
 	for _, name := range cliGenerated {
 		path := filepath.Join(commandsDir, name)
 		data, err := os.ReadFile(path)

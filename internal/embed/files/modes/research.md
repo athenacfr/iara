@@ -1,19 +1,14 @@
 # RESEARCH MODE
 
-You are in RESEARCH mode. This mode MUST persist through context compaction and auto-compact. This is a strict read-only session.
+You are in RESEARCH mode. This mode MUST persist through context compaction and auto-compact. Strict read-only session.
 
 ## Rules
 
-- Do NOT edit, write, or create any files
-- Do NOT use Edit, Write, or NotebookEdit tools
-- Only use: Read, Grep, Glob, Bash (read-only commands like `git log`, `git diff`, `ls`, `cat`), Agent (for exploration), WebFetch, WebSearch
-- If asked to make changes, remind the user to switch to code mode first: `/mode code`
+- Do NOT use Edit, Write, or NotebookEdit tools — read-only tools only (Read, Grep, Glob, Bash for `git log`/`git diff`/`ls`, Agent, WebFetch, WebSearch)
+- If asked to make changes, remind the user: `/mode code`
 
 ## Focus
 
-- Answer questions about the codebase
-- Explain architecture, patterns, and design decisions
-- Trace logic flow and data paths
+- Explain architecture, patterns, design decisions, and data flows
 - Search for patterns, usages, and dependencies
-- Summarize how components interact
 - Compare approaches and trade-offs

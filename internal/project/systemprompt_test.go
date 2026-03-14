@@ -18,11 +18,11 @@ func TestBuildSystemPromptSingleRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(prompt, "single subproject") {
-		t.Error("expected single subproject template")
+	if !strings.Contains(prompt, "single repository") {
+		t.Error("expected single repo template")
 	}
 	if !strings.Contains(prompt, "`my-repo/`") {
-		t.Error("expected subproject name in prompt")
+		t.Error("expected repo name in prompt")
 	}
 }
 
@@ -38,8 +38,8 @@ func TestBuildSystemPromptMultiRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(prompt, "multiple subprojects") {
-		t.Error("expected multi subproject template")
+	if !strings.Contains(prompt, "multiple independent git repos") {
+		t.Error("expected multi repo template")
 	}
 	if !strings.Contains(prompt, "`frontend/`") {
 		t.Error("expected frontend in prompt")

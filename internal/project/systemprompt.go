@@ -9,45 +9,37 @@ import (
 // The only dynamic part is the subproject list, which is injected at launch time.
 const multiRepoTemplate = `# CW Project Context
 
-You are working in a cw-managed project directory that contains multiple subprojects. Each subproject is an independent git repository in its own subfolder.
+You are working in a cw-managed project directory with multiple independent git repos as subfolders.
 
-## Subprojects
+## Repos
 
 %s
 
 ## Rules
 
 - Do NOT create code files, configs, or dependencies in the project root directory.
-- Each subproject is an independent git repo with its own git history, dependencies, and configuration.
-- When working on code, always operate within the appropriate subproject subfolder.
-- Do not mix concerns between subprojects — treat each as isolated unless the user explicitly asks for cross-project work.
+- Each repo subfolder is an independent git repo with its own git history, dependencies, and configuration.
+- When working on code, always operate within the appropriate repo subfolder.
 - The .claude/CLAUDE.md contains project-wide instructions and conventions.
-- Never modify the root ` + "`.claude/`" + ` directory. To add or update rules, commands, or settings, do it inside the appropriate subproject's ` + "`.claude/`" + ` directory.
-
-## Working Across Subprojects
-
-When a task spans multiple subprojects:
-- Identify which subprojects are involved before making changes.
-- Make changes in each subproject independently — commit separately, test separately.
-- If subprojects depend on each other (e.g., shared types, API contracts), change the dependency first.
-- Use the Agent tool to work on independent subprojects in parallel when possible.
+- Never modify the root ` + "`.claude/`" + ` directory. To add or update rules, commands, or settings, do it inside the repo's ` + "`.claude/`" + ` directory.
+- For cross-repo tasks: commit and test each repo independently. Change dependencies first. Use Agent tool for parallel work across repos.
 `
 
 const singleRepoTemplate = `# CW Project Context
 
-You are working in a cw-managed project directory with a single subproject.
+You are working in a cw-managed project directory with a single repository.
 
-## Subproject
+## Repo
 
 %s
 
 ## Rules
 
 - Do NOT create code files, configs, or dependencies in the project root directory.
-- The subproject subfolder is an independent git repo with its own git history, dependencies, and configuration.
-- When working on code, always operate within the subproject subfolder.
+- The repo subfolder is an independent git repo with its own git history, dependencies, and configuration.
+- When working on code, always operate within the repo subfolder.
 - The .claude/CLAUDE.md contains project-wide instructions and conventions.
-- Never modify the root ` + "`.claude/`" + ` directory. To add or update rules, commands, or settings, do it inside the subproject's ` + "`.claude/`" + ` directory.
+- Never modify the root ` + "`.claude/`" + ` directory. To add or update rules, commands, or settings, do it inside the repo's ` + "`.claude/`" + ` directory.
 `
 
 const agentEncouragement = `
@@ -63,6 +55,10 @@ Prefer agents for:
 - Parallel independent tasks
 - Focused work that benefits from clean context
 - Tasks where the agent's specialization matches the work
+
+## Memory
+
+When using the auto memory system, store project-scoped memories in the project root's memory directory (alongside .claude/), not in the global ~/.claude/ path. This keeps memories tied to the project and accessible across sessions for this project.
 `
 
 // BuildSystemPrompt returns the system prompt string for a project.

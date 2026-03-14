@@ -26,6 +26,7 @@ REL="${FILE#$PROJECT_ROOT/}"
 ALLOWED=false
 case "$REL" in
   "") ALLOWED=true ;;
+  .cw/*) ALLOWED=true ;;
   */*)
     DIR="${REL%%/*}"
     REST="${REL#*/}"

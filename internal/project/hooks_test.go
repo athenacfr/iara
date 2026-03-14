@@ -147,6 +147,44 @@ func TestEnsureHooksMatcherContent(t *testing.T) {
 	}
 }
 
+func TestEnsureHooksContainsStopHook(t *testing.T) {
+	dir := setTestProjectsDir(t)
+	projectDir := filepath.Join(dir, "test-project")
+	os.MkdirAll(projectDir, 0755)
+
+	cwRoot := t.TempDir()
+	os.MkdirAll(filepath.Join(cwRoot, "hooks"), 0755)
+
+	err := EnsureHooks("test-project", cwRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(projectDir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var cfg hooksConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("invalid settings JSON: %v", err)
+	}
+
+	stopGroups, ok := cfg.Hooks["Stop"]
+	if !ok {
+		t.Fatal("expected Stop hooks")
+	}
+	if len(stopGroups) == 0 {
+		t.Fatal("expected Stop hook groups")
+	}
+	if len(stopGroups[0].Hooks) == 0 {
+		t.Fatal("expected hooks in Stop group")
+	}
+	if !strings.Contains(stopGroups[0].Hooks[0].Command, "yolo-stop.sh") {
+		t.Errorf("Stop hook command = %q, expected to contain yolo-stop.sh", stopGroups[0].Hooks[0].Command)
+	}
+}
+
 func TestEnsureHooksContainsPreWriteGuard(t *testing.T) {
 	dir := setTestProjectsDir(t)
 	projectDir := filepath.Join(dir, "test-project")

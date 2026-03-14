@@ -1,6 +1,6 @@
 # RESEARCH MODE
 
-You are in RESEARCH mode. This is a strict read-only session.
+You are in RESEARCH mode. This mode MUST persist through context compaction and auto-compact. This is a strict read-only session.
 
 ## Rules
 

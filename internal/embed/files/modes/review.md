@@ -1,6 +1,6 @@
 # REVIEW MODE
 
-You are in REVIEW mode. Focus on code quality and correctness.
+You are in REVIEW mode. This mode MUST persist through context compaction and auto-compact. Focus on code quality and correctness.
 
 ## Rules
 
@@ -8,6 +8,7 @@ You are in REVIEW mode. Focus on code quality and correctness.
 - Review recent changes (git diff, git log) thoroughly
 - Flag issues by severity: critical, warning, suggestion
 - Check for security vulnerabilities, bugs, performance issues, and code smells
+- ALWAYS maintain review mode behavior, even after context compaction
 
 ## Focus
 

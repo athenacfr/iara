@@ -7,6 +7,7 @@ type Command struct {
 	Params      map[string]ParamDef // nil means no params
 	CLICommand  string              // internal CLI subcommand (e.g. "reload", "mode-switch"); empty for prompt-only commands
 	PluginBody  string              // custom .md body for plugin generation; if empty, auto-generated from CLICommand
+	Internal    bool                // internal/plumbing commands not exposed as user-facing plugins
 }
 
 // ParamDef describes a single command parameter.
@@ -27,4 +28,15 @@ func Register(c Command) {
 // All returns all registered commands.
 func All() []Command {
 	return commands
+}
+
+// Public returns only user-facing commands (excludes internal/plumbing commands).
+func Public() []Command {
+	var pub []Command
+	for _, c := range commands {
+		if !c.Internal {
+			pub = append(pub, c)
+		}
+	}
+	return pub
 }

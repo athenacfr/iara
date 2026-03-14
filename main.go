@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -188,6 +190,36 @@ func openFolder(dir string) {
 	}
 }
 
+func internalYoloStart() {
+	projectDir := os.Getenv("CW_PROJECT_DIR")
+	if projectDir == "" {
+		fmt.Fprintln(os.Stderr, "CW_PROJECT_DIR not set — not running inside cw")
+		os.Exit(1)
+	}
+	matches, _ := filepath.Glob(filepath.Join(projectDir, ".cw", "yolo", "plan-*.md"))
+	if len(matches) == 0 {
+		fmt.Fprintln(os.Stderr, "No yolo plan found in "+filepath.Join(projectDir, ".cw", "yolo"))
+		os.Exit(1)
+	}
+	planPath, _ := filepath.Abs(matches[0])
+	if err := os.WriteFile(paths.YoloActiveFile(), []byte(planPath), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write yolo sideband: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Yolo mode activated")
+}
+
+func internalYoloStop() {
+	// Read plan path from sideband
+	data, err := os.ReadFile(paths.YoloActiveFile())
+	if err == nil {
+		planPath := strings.TrimSpace(string(data))
+		os.Remove(planPath)
+	}
+	os.Remove(paths.YoloActiveFile())
+	fmt.Println("Yolo mode deactivated")
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "uninstall" {
 		uninstall()
@@ -236,6 +268,12 @@ func main() {
 			}
 			internalSaveMetadata(os.Args[3])
 			return
+		case "yolo-start":
+			internalYoloStart()
+			return
+		case "yolo-stop":
+			internalYoloStop()
+			return
 		}
 	}
 
@@ -252,8 +290,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	var returnProject *project.Project
+	var returnBypass bool
+
 	for {
-		m := tui.NewModel(cwembed.PluginDir())
+		var m tui.Model
+		if returnProject != nil {
+			m = tui.NewModelWithProject(cwembed.PluginDir(), returnProject, returnBypass)
+			returnProject = nil
+		} else {
+			m = tui.NewModel(cwembed.PluginDir())
+		}
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		result, err := p.Run()
@@ -275,10 +322,32 @@ func main() {
 			continue
 		}
 
-		// Session resumption is now handled by TUI selection:
-		// - "New Session": neither Resume nor SessionID
-		// - "Continue": cfg.Resume = true
-		// - Specific session: cfg.SessionID = "<id>"
+		// Create or load the CW session for this launch
+		var cwSession *session.Session
+		if cfg.SessionID != "" {
+			// Resuming a specific CW session — load it and restore state
+			if s, err := session.Load(cfg.WorkDir, cfg.SessionID); err == nil {
+				cwSession = s
+				// Restore mode from session
+				if m, ok := config.GetMode(s.Mode); ok {
+					cfg.Mode = m
+				}
+				cfg.SkipPermissions = s.SkipPermissions
+				cfg.AutoCompactLimit = s.AutoCompactLimit
+				// Use the Claude session ID for --resume
+				cfg.SessionID = s.ClaudeSessionID
+			}
+		}
+		if cwSession == nil {
+			// New session — generate an ID and create
+			cwSession = session.New(
+				generateSessionID(),
+				cfg.Mode.Name,
+				cfg.SkipPermissions,
+				cfg.AutoCompactLimit,
+			)
+			cwSession.Save(cfg.WorkDir)
+		}
 
 		// Reload loop: re-sync and re-launch on reload signal
 		for {
@@ -294,13 +363,6 @@ func main() {
 					cfg.SystemPrompts = append(cfg.SystemPrompts, meta.Instructions)
 				}
 
-				if cfg.Mode.Flag == "--append-system-prompt-file" && cfg.Mode.Value != "" {
-					data, err := os.ReadFile(cfg.Mode.Value)
-					if err == nil {
-						cfg.SystemPrompts = append(cfg.SystemPrompts, string(data))
-					}
-				}
-
 				// Add each repo as --add-dir so Claude loads their rules and CLAUDE.md
 				if p, err := project.Get(cfg.ProjectName); err == nil {
 					cfg.AddDirs = nil
@@ -310,6 +372,7 @@ func main() {
 				}
 
 				project.EnsureHooks(cfg.ProjectName, cwembed.Dir())
+				project.EnsureAgents(cfg.ProjectName, cwembed.Dir())
 				project.SyncCommands(cfg.ProjectName)
 
 				// Sync env files: merge .env.<repo>.global + .env.<repo>.override → repo/.env
@@ -332,6 +395,11 @@ func main() {
 				stopSpinner = showCompactSpinner()
 			}
 
+			// Set CW session ID on launch config
+			if cwSession != nil {
+				cfg.CWSessionID = cwSession.ID
+			}
+
 			if err := claude.Launch(cfg); err != nil {
 				fmt.Fprintf(os.Stderr, "claude exited: %v\n", err)
 			}
@@ -345,6 +413,14 @@ func main() {
 				envWatcher = nil
 			}
 
+			// Capture Claude session ID and update CW session
+			if cwSession != nil {
+				if claudeID := session.FindClaudeSessionID(cfg.WorkDir); claudeID != "" {
+					cwSession.ClaudeSessionID = claudeID
+				}
+				cwSession.Touch(cfg.WorkDir)
+			}
+
 			// After print-mode compact (Phase 1), Claude exits normally (not via reload).
 			// Check for pending compact context to continue to Phase 2.
 			hasPendingContext := false
@@ -353,6 +429,26 @@ func main() {
 			}
 
 			if !claude.WasReload() && !hasPendingContext {
+				// Session ended normally — mark as completed
+				if cwSession != nil {
+					cwSession.Status = "completed"
+					cwSession.Save(cfg.WorkDir)
+				}
+				// Clean up yolo plan files and sideband
+				if planFiles, err := filepath.Glob(filepath.Join(cfg.WorkDir, ".cw", "yolo", "plan-*.md")); err == nil {
+					for _, f := range planFiles {
+						os.Remove(f)
+					}
+				}
+				os.Remove(paths.YoloActiveFile())
+
+				// Return to launcher screen for the same project
+				if cfg.ProjectName != "" {
+					if proj, err := project.Get(cfg.ProjectName); err == nil {
+						returnProject = proj
+						returnBypass = cfg.SkipPermissions
+					}
+				}
 				break
 			}
 
@@ -362,6 +458,9 @@ func main() {
 				os.Remove(paths.ModeOverrideFile())
 				if m, ok := config.GetMode(modeName); ok {
 					cfg.Mode = m
+					if cwSession != nil {
+						cwSession.Mode = modeName
+					}
 				}
 			}
 
@@ -370,6 +469,24 @@ func main() {
 				permValue := strings.TrimSpace(string(permData))
 				os.Remove(paths.PermissionsOverrideFile())
 				cfg.SkipPermissions = permValue == "bypass"
+				if cwSession != nil {
+					cwSession.SkipPermissions = cfg.SkipPermissions
+				}
+			}
+
+			// Check for yolo sideband (persists across reloads — do NOT delete)
+			if yoloData, err := os.ReadFile(paths.YoloActiveFile()); err == nil {
+				planPath := strings.TrimSpace(string(yoloData))
+				cfg.SkipPermissions = true
+				cfg.YoloActive = true
+				cfg.YoloPlanPath = planPath
+				// Append yolo execution system prompt
+				if yoloPrompt, err := os.ReadFile(filepath.Join(cwembed.ModesDir(), "yolo.md")); err == nil {
+					cfg.SystemPrompts = append(cfg.SystemPrompts, string(yoloPrompt))
+				}
+			} else {
+				cfg.YoloActive = false
+				cfg.YoloPlanPath = ""
 			}
 
 			// Check for auto-compact request via sideband file
@@ -384,6 +501,18 @@ func main() {
 			if _, err := os.Stat(paths.NewSessionFile()); err == nil {
 				os.Remove(paths.NewSessionFile())
 				newSession = true
+				// Mark old session as completed and create a fresh one
+				if cwSession != nil {
+					cwSession.Status = "completed"
+					cwSession.Save(cfg.WorkDir)
+				}
+				cwSession = session.New(
+					generateSessionID(),
+					cfg.Mode.Name,
+					cfg.SkipPermissions,
+					cfg.AutoCompactLimit,
+				)
+				cwSession.Save(cfg.WorkDir)
 			}
 
 			// Reload: clear one-shot fields
@@ -399,27 +528,29 @@ func main() {
 			}
 
 			if autoCompact {
-				// Two-phase auto-compact:
-				// Phase 1: analyze context + run /compact in print mode (exits immediately)
-				// Phase 2: on next reload iteration, send the context as continuation prompt
-				ctx, err := session.AnalyzeContext(cfg.WorkDir)
-				if err != nil || ctx == "" {
-					ctx = session.ExtractRecentContext(cfg.WorkDir, 5)
-				}
-				if ctx != "" {
-					os.WriteFile(paths.CompactContextFile(), []byte(ctx), 0644)
-				}
+				// Auto-compact: run /compact in print mode (exits immediately),
+				// then on next reload iteration the compact context file is read as continuation prompt.
 				cfg.Prompt = "/compact"
 				cfg.Print = true
 				cfg.Quiet = true
 			}
 
-			cfg.Resume = !newSession
-			cfg.SessionID = ""
+			if !newSession && cwSession != nil && cwSession.ClaudeSessionID != "" {
+				cfg.SessionID = cwSession.ClaudeSessionID
+			} else {
+				cfg.SessionID = ""
+			}
 			cfg.AutoSetup = false
 			cfg.SystemPrompts = nil
 		}
 	}
+}
+
+// generateSessionID creates a random hex session ID.
+func generateSessionID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // showCompactSpinner displays a terminal spinner while auto-compact runs.

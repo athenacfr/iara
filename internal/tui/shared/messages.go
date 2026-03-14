@@ -9,10 +9,10 @@ import (
 type Screen int
 
 const (
-	ScreenProjectList Screen = iota
-	ScreenCreateProject
-	ScreenEditProject
-	ScreenModeSelect
+	ScreenProjectExplorer Screen = iota
+	ScreenProjectWizard
+	ScreenAddRepo
+	ScreenLauncher
 )
 
 // ProjectSelectedMsg is sent when a project is selected from the project list.
@@ -36,7 +36,6 @@ type ModeSelectedMsg struct {
 type NavigateMsg struct {
 	Screen      Screen
 	ProjectName string
-	AddRepo     bool
 }
 
 // LaunchMsg signals that Claude should be launched.

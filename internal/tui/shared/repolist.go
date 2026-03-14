@@ -16,11 +16,6 @@ type MethodItem struct{ Name string }
 
 func (m MethodItem) FilterValue() string { return m.Name }
 
-// CopyMoveItem represents a copy/move option.
-type CopyMoveItem struct{ Name string }
-
-func (c CopyMoveItem) FilterValue() string { return c.Name }
-
 // OrgDividerItem is a non-selectable divider for org groups in repo lists.
 type OrgDividerItem struct{ Name string }
 

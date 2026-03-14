@@ -26,6 +26,9 @@ func TestRequiredCommandsExist(t *testing.T) {
 		"help",
 		"worktree",
 		"new-intention",
+		"yolo",
+		"yolo-start",
+		"yolo-stop",
 	}
 
 	all := All()
@@ -43,7 +46,7 @@ func TestRequiredCommandsExist(t *testing.T) {
 
 func TestCLICommandsHaveCLICommand(t *testing.T) {
 	// Commands that map to internal CLI should have CLICommand set
-	cliCommands := []string{"compact-and-continue", "new-session", "reload", "open-project", "switch-mode", "switch-permissions", "save-metadata"}
+	cliCommands := []string{"compact-and-continue", "new-session", "reload", "open-project", "switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop"}
 
 	byName := commandsByName()
 	for _, name := range cliCommands {
@@ -60,7 +63,7 @@ func TestCLICommandsHaveCLICommand(t *testing.T) {
 
 func TestPromptCommandsHavePluginBody(t *testing.T) {
 	// Prompt-only commands should have PluginBody set
-	promptCommands := []string{"mode", "permissions", "help", "worktree", "new-intention"}
+	promptCommands := []string{"mode", "permissions", "help", "worktree", "new-intention", "yolo"}
 
 	byName := commandsByName()
 	for _, name := range promptCommands {
@@ -87,6 +90,58 @@ func TestAllCommandsHaveName(t *testing.T) {
 	for _, cmd := range All() {
 		if cmd.Name == "" {
 			t.Error("found command with empty name")
+		}
+	}
+}
+
+func TestInternalCommandsMarked(t *testing.T) {
+	internal := []string{"switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop"}
+	byName := commandsByName()
+
+	for _, name := range internal {
+		cmd, ok := byName[name]
+		if !ok {
+			t.Errorf("command %q not found", name)
+			continue
+		}
+		if !cmd.Internal {
+			t.Errorf("command %q should be marked Internal", name)
+		}
+	}
+}
+
+func TestPublicExcludesInternal(t *testing.T) {
+	pub := Public()
+	for _, cmd := range pub {
+		if cmd.Internal {
+			t.Errorf("Public() returned internal command: %s", cmd.Name)
+		}
+	}
+
+	// Verify internal commands are not in public list
+	pubNames := make(map[string]bool)
+	for _, c := range pub {
+		pubNames[c.Name] = true
+	}
+	for _, name := range []string{"switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop"} {
+		if pubNames[name] {
+			t.Errorf("internal command %q should not be in Public()", name)
+		}
+	}
+}
+
+func TestPublicCommandsNotInternal(t *testing.T) {
+	publicNames := []string{"compact-and-continue", "new-session", "reload", "open-project", "mode", "permissions", "help", "worktree", "yolo", "new-intention"}
+	byName := commandsByName()
+
+	for _, name := range publicNames {
+		cmd, ok := byName[name]
+		if !ok {
+			t.Errorf("command %q not found", name)
+			continue
+		}
+		if cmd.Internal {
+			t.Errorf("command %q should NOT be marked Internal", name)
 		}
 	}
 }

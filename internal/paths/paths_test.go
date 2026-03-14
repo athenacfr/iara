@@ -192,6 +192,16 @@ func TestDataDirNoXDG(t *testing.T) {
 	_ = home
 }
 
+// --- YoloActiveFile ---
+
+func TestYoloActiveFile(t *testing.T) {
+	t.Setenv("CW_DATA_DIR", "/data")
+	got := YoloActiveFile()
+	if got != "/data/yolo-active" {
+		t.Errorf("YoloActiveFile = %q, want %q", got, "/data/yolo-active")
+	}
+}
+
 // --- BinDir no override, no darwin ---
 
 func TestBinDirNoOverride(t *testing.T) {

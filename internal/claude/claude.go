@@ -20,14 +20,16 @@ type LaunchConfig struct {
 	Prompt           string   // initial message (positional arg to claude)
 	SystemPrompts    []string // prompt strings passed via --append-system-prompt
 	AddDirs          []string // repo paths passed via --add-dir (loads rules via env var)
-	Resume           bool     // pass --continue to resume most recent conversation (transient, set by TUI session selection)
 	SessionID        string   // pass --resume <id> to resume a specific session (transient, set by TUI session selection)
 	SkipPermissions  bool     // pass --dangerously-skip-permissions to claude
 	EditorMode       bool     // open WorkDir with $EDITOR instead of launching claude
 	AutoSetup        bool     // set CW_AUTO_SETUP=1 so skills know cw auto-invoked them
 	AutoCompactLimit int      // 0=off, 40/50/60/70/80 — context % threshold for auto-compact
+	CWSessionID      string   // cw session ID (passed as env var for hooks)
 	Print            bool     // run in non-interactive mode (-p): process prompt and exit
 	Quiet            bool     // suppress stdout (used during auto-compact)
+	YoloActive       bool     // set CW_YOLO_ACTIVE=1 for yolo autonomous execution
+	YoloPlanPath     string   // absolute path to yolo plan file (CW_YOLO_PLAN env var)
 }
 
 // reloadRequested is set when SIGUSR1 is received from `cw internal reload`
@@ -51,12 +53,17 @@ func Launch(cfg LaunchConfig) error {
 
 	if cfg.SessionID != "" {
 		args = append(args, "--resume", cfg.SessionID)
-	} else if cfg.Resume {
-		args = append(args, "--continue")
 	}
 
 	if cfg.PluginDir != "" {
 		args = append(args, "--plugin-dir", cfg.PluginDir)
+	}
+
+	// Inject mode system prompt from file
+	if cfg.Mode.Flag == "--append-system-prompt-file" && cfg.Mode.Value != "" {
+		if data, err := os.ReadFile(cfg.Mode.Value); err == nil {
+			cfg.SystemPrompts = append(cfg.SystemPrompts, string(data))
+		}
 	}
 
 	if len(cfg.SystemPrompts) > 0 {
@@ -66,6 +73,13 @@ func Launch(cfg LaunchConfig) error {
 
 	for _, dir := range cfg.AddDirs {
 		args = append(args, "--add-dir", dir)
+	}
+
+	// Prepend mode context to prompt so mode survives compaction
+	if cfg.Prompt != "" && cfg.Mode.Name != "" && cfg.Mode.Name != "code" && cfg.Mode.Name != "none" {
+		if !cfg.Print {
+			cfg.Prompt = fmt.Sprintf("You are in %s mode. Continue operating in this mode.\n\n%s", strings.ToUpper(cfg.Mode.Name), cfg.Prompt)
+		}
 	}
 
 	// Initial prompt as positional arg (e.g., /cw:new-intention for onboarding)
@@ -97,6 +111,15 @@ func Launch(cfg LaunchConfig) error {
 	}
 	if cfg.AutoCompactLimit > 0 {
 		env = append(env, fmt.Sprintf("CW_AUTO_COMPACT_LIMIT=%d", cfg.AutoCompactLimit))
+	}
+	if cfg.CWSessionID != "" {
+		env = append(env, fmt.Sprintf("CW_SESSION_ID=%s", cfg.CWSessionID))
+	}
+	if cfg.YoloActive {
+		env = append(env, "CW_YOLO_ACTIVE=1")
+	}
+	if cfg.YoloPlanPath != "" {
+		env = append(env, fmt.Sprintf("CW_YOLO_PLAN=%s", cfg.YoloPlanPath))
 	}
 	if len(cfg.AddDirs) > 0 {
 		env = append(env, "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1")

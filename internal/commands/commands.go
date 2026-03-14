@@ -29,6 +29,7 @@ func init() {
 		Name:        "switch-mode",
 		Description: "Switch Claude's behavioral mode mid-session. The session will reload with the new mode's system prompt.",
 		CLICommand:  "mode-switch",
+		Internal:    true,
 		Params: map[string]ParamDef{
 			"mode": {
 				Type:        "string",
@@ -43,6 +44,7 @@ func init() {
 		Name:        "switch-permissions",
 		Description: "Switch Claude's permission mode mid-session. The session will reload with the new permission setting.",
 		CLICommand:  "permissions-switch",
+		Internal:    true,
 		Params: map[string]ParamDef{
 			"value": {
 				Type:        "string",
@@ -57,6 +59,7 @@ func init() {
 		Name:        "save-metadata",
 		Description: "Save project metadata (title, description, instructions) for the current cw project.",
 		CLICommand:  "save-metadata",
+		Internal:    true,
 		Params: map[string]ParamDef{
 			"json": {
 				Type:        "string",
@@ -137,12 +140,12 @@ Switch with: /mode <name>
    ` + "```" + `
    cw internal mode-switch <mode-name>
    ` + "```" + `
-   Do NOT do anything else after running the command. The session will restart with ` + "`--continue`" + ` and the correct mode system prompt injected.
+   Do NOT do anything else after running the command. The session will restart and resume with the correct mode system prompt injected.
 
 ## Important
 
 - Mode switches trigger a session reload so the correct system prompt is injected
-- The session resumes automatically with ` + "`--continue`" + ` — no context is lost
+- The session resumes automatically using the session ID — no context is lost
 - If CW_MODE env var is set (by the cw launcher), that was the initial mode`,
 	})
 
@@ -197,12 +200,12 @@ Switch with: /permissions <bypass|normal>
    ` + "```" + `
    cw internal permissions-switch <value>
    ` + "```" + `
-   Do NOT do anything else after running the command. The session will restart with ` + "`--continue`" + ` and the correct permission setting applied.
+   Do NOT do anything else after running the command. The session will restart and resume with the correct permission setting applied.
 
 ## Important
 
 - Permission switches trigger a session reload
-- The session resumes automatically with ` + "`--continue`" + ` — no context is lost
+- The session resumes automatically using the session ID — no context is lost
 - This is a **temporary** change for the current session only
 - To permanently change the default, use the ` + "`p`" + ` key on the project list screen in the cw TUI`,
 	})
@@ -316,6 +319,125 @@ Given a branch name:
 - NEVER remove the main worktree
 - Always show the full path when creating/listing worktrees
 - If the user asks to "switch" to a worktree, tell them to exit and use ` + "`cw <project> -w <branch>`" + ``,
+	})
+
+	Register(Command{
+		Name:        "yolo",
+		Description: "Plan and execute work autonomously. Usage: /yolo [objective]",
+		PluginBody: `# Yolo Mode — Autonomous Planning & Execution
+
+Plan a set of tasks and then execute them autonomously without human intervention.
+
+## Argument
+
+The argument is: ` + "`$ARGUMENTS`" + `
+
+## Process
+
+### Step 1: Determine Objective
+
+**If argument provided** (e.g., ` + "`/yolo implement auth token refresh`" + `):
+- Use the argument as the objective
+
+**If no argument** (` + "`/yolo`" + `):
+1. Check for an existing plan file by running: ` + "`ls $CW_PROJECT_DIR/.cw/yolo/plan-*.md 2>/dev/null`" + ` using the Bash tool
+   - **If plan exists**: Use AskUserQuestion to ask: "Active yolo plan found. Resume execution or re-plan?"
+     - Resume → skip to Step 5 (start executing)
+     - Re-plan → continue to Step 2
+2. If no plan exists, analyze the recent conversation context
+   - **If relevant context exists** → propose a plan based on what's been discussed
+   - **If no context** → ask the user what they want to accomplish
+
+### Step 2: Explore & Plan
+
+1. Explore the codebase to understand what's needed for the objective
+2. Ask clarifying questions if the objective is ambiguous (keep it brief — 1-2 questions max)
+3. Build a plan with atomic, ordered tasks using ` + "`[ ]`" + ` checkboxes
+
+### Step 3: Write Plan File
+
+Create the directory and write the plan:
+
+` + "```bash" + `
+mkdir -p "$CW_PROJECT_DIR/.cw/yolo"
+` + "```" + `
+
+Then write the plan file to ` + "`$CW_PROJECT_DIR/.cw/yolo/plan-$CW_SESSION_ID.md`" + ` using the Write tool.
+
+Plan format:
+
+` + "```markdown" + `
+# Yolo Plan
+
+## Objective
+Brief description of what we're building.
+
+## Tasks
+- [ ] First task to do
+- [ ] Second task
+  - [ ] Subtask if needed
+- [ ] Third task
+
+## Notes
+Any context, decisions, or observations.
+` + "```" + `
+
+### Step 4: Confirm
+
+Use AskUserQuestion to show:
+- The objective
+- The task list (summarized if long)
+- Estimated scope (e.g., "~8 tasks, touching 5 files")
+
+Ask: **"Ready to start yolo?"**
+
+- **Yes** → run ` + "`cw internal yolo-start`" + ` using the Bash tool, then continue to Step 5
+- **No** → refine the plan based on feedback, update the plan file, and ask again
+
+### Step 5: Execute
+
+Work through all pending tasks in the plan file autonomously.
+
+**Never ask questions.** Do not use AskUserQuestion. Make decisions yourself.
+**Never stop to wait for input.** Keep working until all tasks are done.
+
+1. Read the plan file
+2. Find the first unchecked ` + "`[ ]`" + ` task
+3. Implement it
+4. Verify it works (run tests, build, lint as appropriate)
+5. Check it off ` + "`[x]`" + ` in the plan file
+6. Git commit if you've made meaningful progress
+7. Move to the next ` + "`[ ]`" + ` task
+8. Repeat until all tasks are ` + "`[x]`" + `
+
+You can add, modify, reorder, or remove tasks as you learn things. Add notes to the Notes section.
+
+**When stuck:** Try a different approach. If you've tried 3 times, skip the task with a note and move on.
+
+**Agents:** Use the Agent tool for parallel or focused work — researcher for exploration, tester for tests, implementer for independent subtasks.
+
+**When ALL tasks are done:** Run ` + "`cw internal yolo-stop`" + ` using the Bash tool. Do NOT call yolo-stop until every task is done.
+
+## Important
+
+- Tasks should be atomic — one clear deliverable per task
+- Order tasks by dependency — things that must be done first come first
+- Include verification tasks (run tests, build, lint) where appropriate
+- The plan file is a living document — modify it during execution`,
+	})
+
+	Register(Command{
+		Name:        "yolo-start",
+		Description: "Start yolo autonomous execution. Writes sideband file and triggers reload.",
+		CLICommand:  "yolo-start",
+		Internal:    true,
+	})
+
+	Register(Command{
+		Name:        "yolo-stop",
+		Description: "Stop yolo autonomous execution. Deletes plan file and triggers reload.",
+		CLICommand:  "yolo-stop",
+		Internal:    true,
 	})
 
 	Register(Command{

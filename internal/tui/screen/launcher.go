@@ -21,7 +21,7 @@ func (s sessionItem) FilterValue() string { return s.entry.label }
 type sessionEntry struct {
 	label   string
 	session *session.Session
-	kind    int // 0=new, 1=continue, 2=session
+	kind    int // 0=new, 1=list sessions, 2=resume specific session
 }
 
 type sessionsLoadedMsg struct {
@@ -29,7 +29,7 @@ type sessionsLoadedMsg struct {
 	err      error
 }
 
-type ModeSelectModel struct {
+type LauncherModel struct {
 	fzfList         widget.FzfListModel
 	modes           []config.Mode
 	modeIndex       int
@@ -37,10 +37,10 @@ type ModeSelectModel struct {
 	width, height   int
 }
 
-func NewModeSelectModelWithBypass(bypass bool, projectDir string) ModeSelectModel {
+func NewLauncherModel(bypass bool, projectDir string) LauncherModel {
 	entries := []sessionEntry{
 		{label: "+ New Session", kind: 0},
-		{label: "Continue last session", kind: 1},
+		{label: "List sessions", kind: 1},
 	}
 
 	items := make([]widget.FzfItem, len(entries))
@@ -55,7 +55,7 @@ func NewModeSelectModelWithBypass(bypass bool, projectDir string) ModeSelectMode
 		ListWidthPct: 0.5,
 	})
 
-	return ModeSelectModel{
+	return LauncherModel{
 		fzfList:         fzf,
 		modes:           config.Modes,
 		modeIndex:       0,
@@ -63,24 +63,24 @@ func NewModeSelectModelWithBypass(bypass bool, projectDir string) ModeSelectMode
 	}
 }
 
-func (m ModeSelectModel) LoadSessions(projectDir string) tea.Cmd {
+func (m LauncherModel) LoadSessions(projectDir string) tea.Cmd {
 	return func() tea.Msg {
 		sessions, err := session.List(projectDir)
 		return sessionsLoadedMsg{sessions: sessions, err: err}
 	}
 }
 
-func (m ModeSelectModel) Init() tea.Cmd {
+func (m LauncherModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m *ModeSelectModel) SetSize(w, h int) {
+func (m *LauncherModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	m.fzfList.SetSize(w, h-7)
 }
 
-func (m ModeSelectModel) Update(msg tea.Msg) (ModeSelectModel, tea.Cmd) {
+func (m LauncherModel) Update(msg tea.Msg) (LauncherModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case sessionsLoadedMsg:
 		if msg.err != nil || len(msg.sessions) == 0 {
@@ -91,7 +91,7 @@ func (m ModeSelectModel) Update(msg tea.Msg) (ModeSelectModel, tea.Cmd) {
 		}
 		for i := range msg.sessions {
 			s := msg.sessions[i]
-			label := fmt.Sprintf("%s  %s", session.RelativeTime(s.Timestamp), s.Summary)
+			label := fmt.Sprintf("%s  %s", session.RelativeTime(session.ParseTime(s.LastActive)), s.Summary)
 			entries = append(entries, sessionEntry{label: label, session: &s, kind: 2})
 		}
 		items := make([]widget.FzfItem, len(entries))
@@ -140,7 +140,7 @@ func (m ModeSelectModel) Update(msg tea.Msg) (ModeSelectModel, tea.Cmd) {
 				}
 			case widget.FzfCancelMsg:
 				return m, func() tea.Msg {
-					return shared.NavigateMsg{Screen: shared.ScreenProjectList}
+					return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer}
 				}
 			}
 		}
@@ -159,7 +159,7 @@ func sessionEntryID(entry sessionEntry) string {
 	return ""
 }
 
-func (m ModeSelectModel) View() string {
+func (m LauncherModel) View() string {
 	var b strings.Builder
 
 	b.WriteString(style.TitleStyle.Render("MODE"))
@@ -264,9 +264,10 @@ func sessionPreview(item widget.FzfItem, width, height int) string {
 		lines = append(lines, style.DimStyle.Render("Start a fresh conversation with"))
 		lines = append(lines, style.DimStyle.Render("updated system prompts and config."))
 	case 1:
-		lines = append(lines, style.TitleStyle.Render("Continue"))
+		lines = append(lines, style.TitleStyle.Render("List Sessions"))
 		lines = append(lines, "")
-		lines = append(lines, style.DimStyle.Render("Resume the most recent session."))
+		lines = append(lines, style.DimStyle.Render("Launch Claude with /resume to"))
+		lines = append(lines, style.DimStyle.Render("browse and resume a session."))
 	case 2:
 		if si.entry.session != nil {
 			s := si.entry.session
@@ -276,7 +277,7 @@ func sessionPreview(item widget.FzfItem, width, height int) string {
 				lines = append(lines, s.Summary)
 			}
 			lines = append(lines, "")
-			lines = append(lines, style.DimStyle.Render(session.RelativeTime(s.Timestamp)))
+			lines = append(lines, style.DimStyle.Render(session.RelativeTime(session.ParseTime(s.LastActive))))
 			lines = append(lines, "")
 			lines = append(lines, style.DimStyle.Render("ID: "+s.ID[:min(12, len(s.ID))]))
 		}

@@ -1,7 +1,6 @@
 package project
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -110,35 +109,3 @@ func RemoveRepo(projectName, repoName string) error {
 	return os.RemoveAll(repoPath)
 }
 
-func CopyDir(src, dest string) error {
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dest, rel)
-
-		if d.IsDir() {
-			return os.MkdirAll(target, 0755)
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, info.Mode())
-	})
-}
-
-func MoveDir(src, dest string) error {
-	return os.Rename(src, dest)
-}

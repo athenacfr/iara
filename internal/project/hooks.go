@@ -31,6 +31,7 @@ func EnsureHooks(name, cwRoot string) error {
 
 	preWriteGuard := filepath.Join(cwRoot, "hooks", "pre-write-guard.sh")
 	autoCompact := filepath.Join(cwRoot, "hooks", "auto-compact.sh")
+	yoloStop := filepath.Join(cwRoot, "hooks", "yolo-stop.sh")
 
 	cfg := hooksConfig{
 		Hooks: map[string][]matcherGroup{
@@ -52,6 +53,16 @@ func EnsureHooks(name, cwRoot string) error {
 						{
 							Type:    "command",
 							Command: autoCompact,
+						},
+					},
+				},
+			},
+			"Stop": {
+				{
+					Hooks: []hookEntry{
+						{
+							Type:    "command",
+							Command: yoloStop,
 						},
 					},
 				},

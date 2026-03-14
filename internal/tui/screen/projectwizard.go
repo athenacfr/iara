@@ -2,7 +2,6 @@ package screen
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -24,25 +23,20 @@ const (
 	stepMethod
 	stepRepos
 	stepGitURL
-	stepLocalPath
-	stepCopyMove
 	stepCloning
 )
 
-type CreateProjectModel struct {
+type ProjectWizardModel struct {
 	step   createStep
 	width  int
 	height int
 
 	nameInput    textinput.Model
-	methodList   widget.FzfListModel
-	repoList     widget.FzfListModel
-	reposErr     error
-	urlInput     textinput.Model
-	pathInput    textinput.Model
-	copyMoveList widget.FzfListModel
-	localPath    string
-	spinner      spinner.Model
+	methodList  widget.FzfListModel
+	repoList    widget.FzfListModel
+	reposErr    error
+	urlInput    textinput.Model
+	spinner     spinner.Model
 	clonesTotal  int
 	projectName  string
 	statusText   string
@@ -53,7 +47,7 @@ type CreateProjectModel struct {
 	ghAvail      bool
 }
 
-func NewCreateProjectModel() CreateProjectModel {
+func NewProjectWizardModel() ProjectWizardModel {
 	ti := textinput.New()
 	ti.Placeholder = "my-project"
 	ti.Focus()
@@ -63,49 +57,42 @@ func NewCreateProjectModel() CreateProjectModel {
 	urlTi.Placeholder = "https://github.com/user/repo.git"
 	urlTi.CharLimit = 200
 
-	pathTi := textinput.New()
-	pathTi.Placeholder = "/path/to/directory"
-	pathTi.CharLimit = 200
-
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
-	return CreateProjectModel{
+	return ProjectWizardModel{
 		step:      stepName,
 		nameInput: ti,
 		urlInput:  urlTi,
-		pathInput: pathTi,
 		spinner:   sp,
 		ghAvail:   gh.IsAvailable() && gh.IsAuthenticated(),
 	}
 }
 
-func (m CreateProjectModel) CleanupIfNeeded() {
+func (m ProjectWizardModel) CleanupIfNeeded() {
 	if m.projectName != "" && m.addedCount == 0 {
 		project.Delete(m.projectName)
 	}
 }
 
-func (m CreateProjectModel) Init() tea.Cmd {
+func (m ProjectWizardModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-func (m *CreateProjectModel) SetSize(w, h int) {
+func (m *ProjectWizardModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	m.repoList.SetSize(w, h-5)
 	m.methodList.SetSize(w, h-5)
-	m.copyMoveList.SetSize(w, h-5)
 }
 
-func (m CreateProjectModel) buildMethodList() widget.FzfListModel {
+func (m ProjectWizardModel) buildMethodList() widget.FzfListModel {
 	var items []widget.FzfItem
 	items = append(items, shared.MethodItem{Name: "Done"})
 	if m.ghAvail {
 		items = append(items, shared.MethodItem{Name: "GitHub"})
 	}
 	items = append(items, shared.MethodItem{Name: "Git URL"})
-	items = append(items, shared.MethodItem{Name: "Local directory"})
 	items = append(items, shared.MethodItem{Name: "Empty (git init)"})
 	list := widget.NewFzfList(items, widget.FzfListConfig{
 		Placeholder: "No methods",
@@ -129,23 +116,6 @@ func cloneURL(projectName, url string) tea.Cmd {
 	}
 }
 
-func addLocalDir(projectName, srcPath string, move bool) tea.Cmd {
-	return func() tea.Msg {
-		projDir, err := project.Create(projectName)
-		if err != nil {
-			return shared.AddCompleteMsg{}
-		}
-		name := filepath.Base(srcPath)
-		dest := filepath.Join(projDir, name)
-		if move {
-			project.MoveDir(srcPath, dest)
-		} else {
-			project.CopyDir(srcPath, dest)
-		}
-		return shared.AddCompleteMsg{}
-	}
-}
-
 func initEmptyRepo(projectName string) tea.Cmd {
 	return func() tea.Msg {
 		projDir, err := project.Create(projectName)
@@ -157,7 +127,7 @@ func initEmptyRepo(projectName string) tea.Cmd {
 	}
 }
 
-func (m CreateProjectModel) Update(msg tea.Msg) (CreateProjectModel, tea.Cmd) {
+func (m ProjectWizardModel) Update(msg tea.Msg) (ProjectWizardModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case shared.AllReposLoadedMsg:
 		m.loading = false
@@ -180,12 +150,12 @@ func (m CreateProjectModel) Update(msg tea.Msg) (CreateProjectModel, tea.Cmd) {
 
 	case widget.CloneAllDoneMsg:
 		return m, func() tea.Msg {
-			return shared.NavigateMsg{Screen: shared.ScreenProjectList}
+			return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer}
 		}
 
 	case shared.AllClonesCompleteMsg:
 		return m, func() tea.Msg {
-			return shared.NavigateMsg{Screen: shared.ScreenProjectList}
+			return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer}
 		}
 
 	case shared.AddCompleteMsg:
@@ -222,16 +192,12 @@ func (m CreateProjectModel) Update(msg tea.Msg) (CreateProjectModel, tea.Cmd) {
 			return m.updateRepos(msg)
 		case stepGitURL:
 			return m.updateGitURL(msg)
-		case stepLocalPath:
-			return m.updateLocalPath(msg)
-		case stepCopyMove:
-			return m.updateCopyMove(msg)
 		}
 	}
 	return m, nil
 }
 
-func (m CreateProjectModel) updateName(msg tea.KeyMsg) (CreateProjectModel, tea.Cmd) {
+func (m ProjectWizardModel) updateName(msg tea.KeyMsg) (ProjectWizardModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		name := strings.TrimSpace(m.nameInput.Value())
@@ -243,7 +209,7 @@ func (m CreateProjectModel) updateName(msg tea.KeyMsg) (CreateProjectModel, tea.
 		m.methodList = m.buildMethodList()
 		return m, nil
 	case "esc":
-		return m, func() tea.Msg { return shared.NavigateMsg{Screen: shared.ScreenProjectList} }
+		return m, func() tea.Msg { return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer} }
 	default:
 		var cmd tea.Cmd
 		m.nameInput, cmd = m.nameInput.Update(msg)
@@ -251,7 +217,7 @@ func (m CreateProjectModel) updateName(msg tea.KeyMsg) (CreateProjectModel, tea.
 	}
 }
 
-func (m CreateProjectModel) updateMethod(msg tea.KeyMsg) (CreateProjectModel, tea.Cmd) {
+func (m ProjectWizardModel) updateMethod(msg tea.KeyMsg) (ProjectWizardModel, tea.Cmd) {
 	newList, consumed, result := m.methodList.HandleKey(msg.String())
 	m.methodList = newList
 
@@ -265,7 +231,7 @@ func (m CreateProjectModel) updateMethod(msg tea.KeyMsg) (CreateProjectModel, te
 					project.Create(m.projectName)
 				}
 				return m, func() tea.Msg {
-					return shared.NavigateMsg{Screen: shared.ScreenProjectList}
+					return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer}
 				}
 			case "GitHub":
 				m.step = stepRepos
@@ -275,11 +241,6 @@ func (m CreateProjectModel) updateMethod(msg tea.KeyMsg) (CreateProjectModel, te
 				m.step = stepGitURL
 				m.urlInput.SetValue("")
 				m.urlInput.Focus()
-				return m, textinput.Blink
-			case "Local directory":
-				m.step = stepLocalPath
-				m.pathInput.SetValue("")
-				m.pathInput.Focus()
 				return m, textinput.Blink
 			case "Empty (git init)":
 				m.step = stepCloning
@@ -302,7 +263,7 @@ func (m CreateProjectModel) updateMethod(msg tea.KeyMsg) (CreateProjectModel, te
 	return m, nil
 }
 
-func (m CreateProjectModel) updateRepos(msg tea.KeyMsg) (CreateProjectModel, tea.Cmd) {
+func (m ProjectWizardModel) updateRepos(msg tea.KeyMsg) (ProjectWizardModel, tea.Cmd) {
 	newList, consumed, result := m.repoList.HandleKey(msg.String())
 	m.repoList = newList
 
@@ -320,7 +281,7 @@ func (m CreateProjectModel) updateRepos(msg tea.KeyMsg) (CreateProjectModel, tea
 
 			projDir, err := project.Create(m.projectName)
 			if err != nil {
-				return m, func() tea.Msg { return shared.NavigateMsg{Screen: shared.ScreenProjectList} }
+				return m, func() tea.Msg { return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer} }
 			}
 
 			var repoNames []string
@@ -355,7 +316,7 @@ func (m CreateProjectModel) updateRepos(msg tea.KeyMsg) (CreateProjectModel, tea
 	return m, nil
 }
 
-func (m CreateProjectModel) updateGitURL(msg tea.KeyMsg) (CreateProjectModel, tea.Cmd) {
+func (m ProjectWizardModel) updateGitURL(msg tea.KeyMsg) (ProjectWizardModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		url := strings.TrimSpace(m.urlInput.Value())
@@ -379,76 +340,7 @@ func (m CreateProjectModel) updateGitURL(msg tea.KeyMsg) (CreateProjectModel, te
 	}
 }
 
-func (m CreateProjectModel) updateLocalPath(msg tea.KeyMsg) (CreateProjectModel, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		p := strings.TrimSpace(m.pathInput.Value())
-		if p == "" {
-			return m, nil
-		}
-		if strings.HasPrefix(p, "~/") {
-			home, _ := os.UserHomeDir()
-			p = filepath.Join(home, p[2:])
-		}
-		info, err := os.Stat(p)
-		if err != nil || !info.IsDir() {
-			return m, nil
-		}
-		m.localPath = p
-		m.step = stepCopyMove
-		items := []widget.FzfItem{
-			shared.CopyMoveItem{Name: "Copy"},
-			shared.CopyMoveItem{Name: "Move"},
-		}
-		m.copyMoveList = widget.NewFzfList(items, widget.FzfListConfig{
-			Placeholder: "Choose action",
-		})
-		m.copyMoveList.SetSize(m.width, m.height-5)
-		return m, nil
-	case "esc":
-		m.step = stepMethod
-		m.methodList = m.buildMethodList()
-		return m, nil
-	default:
-		var cmd tea.Cmd
-		m.pathInput, cmd = m.pathInput.Update(msg)
-		return m, cmd
-	}
-}
-
-func (m CreateProjectModel) updateCopyMove(msg tea.KeyMsg) (CreateProjectModel, tea.Cmd) {
-	newList, consumed, result := m.copyMoveList.HandleKey(msg.String())
-	m.copyMoveList = newList
-
-	if result != nil {
-		switch r := result.(type) {
-		case widget.FzfConfirmMsg:
-			ci := r.Item.(shared.CopyMoveItem)
-			move := ci.Name == "Move"
-			action := "Copying..."
-			if move {
-				action = "Moving..."
-			}
-			m.step = stepCloning
-			m.statusText = action
-			return m, tea.Batch(
-				m.spinner.Tick,
-				addLocalDir(m.projectName, m.localPath, move),
-			)
-		case widget.FzfCancelMsg:
-			m.step = stepLocalPath
-			m.pathInput.Focus()
-			return m, textinput.Blink
-		}
-	}
-
-	if consumed {
-		return m, nil
-	}
-	return m, nil
-}
-
-func (m CreateProjectModel) View() string {
+func (m ProjectWizardModel) View() string {
 	switch m.step {
 	case stepName:
 		return m.viewName()
@@ -458,24 +350,20 @@ func (m CreateProjectModel) View() string {
 		return m.viewRepos()
 	case stepGitURL:
 		return m.viewGitURL()
-	case stepLocalPath:
-		return m.viewLocalPath()
-	case stepCopyMove:
-		return m.viewCopyMove()
 	case stepCloning:
 		return m.viewCloning()
 	}
 	return ""
 }
 
-func (m CreateProjectModel) viewName() string {
+func (m ProjectWizardModel) viewName() string {
 	header := style.TitleStyle.Render("NEW PROJECT") + "\n"
 	kb := style.RenderKeybar(style.KeyBind{Key: "enter", Desc: "next"}, style.KeyBind{Key: "esc", Desc: "cancel"})
 	body := "\n  Project name:\n\n  " + m.nameInput.View()
 	return header + kb + "\n" + body
 }
 
-func (m CreateProjectModel) viewMethod() string {
+func (m ProjectWizardModel) viewMethod() string {
 	breadcrumb := style.TitleStyle.Render("NEW PROJECT") +
 		style.DimStyle.Render(" › "+m.projectName+" › add repos") + "\n"
 
@@ -488,7 +376,7 @@ func (m CreateProjectModel) viewMethod() string {
 	return breadcrumb + kb + "\n" + added + "\n" + m.methodList.View()
 }
 
-func (m CreateProjectModel) viewRepos() string {
+func (m ProjectWizardModel) viewRepos() string {
 	breadcrumb := style.TitleStyle.Render("NEW PROJECT") +
 		style.DimStyle.Render(" › "+m.projectName+" › GitHub") + "\n"
 
@@ -509,7 +397,7 @@ func (m CreateProjectModel) viewRepos() string {
 	return breadcrumb + kb + "\n\n" + m.repoList.View()
 }
 
-func (m CreateProjectModel) viewGitURL() string {
+func (m ProjectWizardModel) viewGitURL() string {
 	breadcrumb := style.TitleStyle.Render("NEW PROJECT") +
 		style.DimStyle.Render(" › "+m.projectName+" › Git URL") + "\n"
 	kb := style.RenderKeybar(style.KeyBind{Key: "enter", Desc: "clone"}, style.KeyBind{Key: "esc", Desc: "back"})
@@ -517,22 +405,7 @@ func (m CreateProjectModel) viewGitURL() string {
 	return breadcrumb + kb + "\n" + body
 }
 
-func (m CreateProjectModel) viewLocalPath() string {
-	breadcrumb := style.TitleStyle.Render("NEW PROJECT") +
-		style.DimStyle.Render(" › "+m.projectName+" › local") + "\n"
-	kb := style.RenderKeybar(style.KeyBind{Key: "enter", Desc: "next"}, style.KeyBind{Key: "esc", Desc: "back"})
-	body := "\n  Directory path:\n\n  " + m.pathInput.View()
-	return breadcrumb + kb + "\n" + body
-}
-
-func (m CreateProjectModel) viewCopyMove() string {
-	breadcrumb := style.TitleStyle.Render("NEW PROJECT") +
-		style.DimStyle.Render(" › "+m.projectName+" › "+filepath.Base(m.localPath)) + "\n"
-	kb := style.RenderKeybar(style.KeyBind{Key: "enter", Desc: "select"}, style.KeyBind{Key: "esc", Desc: "back"})
-	return breadcrumb + kb + "\n\n" + m.copyMoveList.View()
-}
-
-func (m CreateProjectModel) viewCloning() string {
+func (m ProjectWizardModel) viewCloning() string {
 	if m.cloneChan != nil {
 		return m.progress.View()
 	}

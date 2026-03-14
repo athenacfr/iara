@@ -11,7 +11,7 @@ exports[`Mode Select › switches mode with right arrow | 1`] = String.raw`
 ││ search...                            ││                                       │
 │└──────────────────────────────────────┘│ Start a fresh conversation with       │
 │▶ + New Session                         │ updated system prompts and config.    │
-│  Continue last session                 │                                       │
+│  List sessions                         │                                       │
 │                                        │                                       │
 │                                        │                                       │
 │                                        │                                       │

@@ -14,10 +14,10 @@ import (
 type activeScreen int
 
 const (
-	screenProjectList activeScreen = iota
-	screenCreateProject
-	screenEditProject
-	screenModeSelect
+	screenProjectExplorer activeScreen = iota
+	screenProjectWizard
+	screenAddRepo
+	screenLauncher
 )
 
 type Model struct {
@@ -28,24 +28,41 @@ type Model struct {
 	selectedProject *project.Project
 	launchConfig    *claude.LaunchConfig
 
-	projectList   screen.ProjectListModel
-	createProject screen.CreateProjectModel
-	editProject   screen.EditProjectModel
-	modeSelect    screen.ModeSelectModel
+	projectExplorer screen.ProjectExplorerModel
+	projectWizard   screen.ProjectWizardModel
+	addRepo         screen.AddRepoModel
+	launcher        screen.LauncherModel
 }
 
 func NewModel(pluginDir string) Model {
 	return Model{
-		screen:      screenProjectList,
-		projectList: screen.NewProjectListModel(),
+		screen:      screenProjectExplorer,
+		projectExplorer: screen.NewProjectExplorerModel(),
 		launchConfig: &claude.LaunchConfig{
 			PluginDir: pluginDir,
 		},
 	}
 }
 
+func NewModelWithProject(pluginDir string, proj *project.Project, bypass bool) Model {
+	m := Model{
+		screen:          screenLauncher,
+		selectedProject: proj,
+		launcher:        screen.NewLauncherModel(bypass, proj.Path),
+		launchConfig: &claude.LaunchConfig{
+			PluginDir:   pluginDir,
+			WorkDir:     proj.Path,
+			ProjectName: proj.Name,
+		},
+	}
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
-	return m.projectList.Init()
+	if m.screen == screenLauncher && m.selectedProject != nil {
+		return m.launcher.LoadSessions(m.selectedProject.Path)
+	}
+	return m.projectExplorer.Init()
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -53,16 +70,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.projectList.SetSize(msg.Width, msg.Height)
-		m.createProject.SetSize(msg.Width, msg.Height)
-		m.editProject.SetSize(msg.Width, msg.Height)
-		m.modeSelect.SetSize(msg.Width, msg.Height)
+		m.projectExplorer.SetSize(msg.Width, msg.Height)
+		m.projectWizard.SetSize(msg.Width, msg.Height)
+		m.addRepo.SetSize(msg.Width, msg.Height)
+		m.launcher.SetSize(msg.Width, msg.Height)
 		return m, nil
 
 	case tea.KeyMsg:
 		if key.Matches(msg, style.GlobalKeys.Quit) {
-			if m.screen == screenCreateProject {
-				m.createProject.CleanupIfNeeded()
+			if m.screen == screenProjectWizard {
+				m.projectWizard.CleanupIfNeeded()
 			}
 			m.launchConfig.WorkDir = ""
 			return m, tea.Quit
@@ -109,24 +126,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.launchConfig.Prompt = "/cw:new-intention"
 			m.launchConfig.SkipPermissions = true
 			m.launchConfig.AutoSetup = true
-			m.launchConfig.AutoCompactLimit = m.projectList.AutoCompactLimit
+			m.launchConfig.AutoCompactLimit = m.projectExplorer.AutoCompactLimit
 			return m, tea.Quit
 		}
 
-		m.launchConfig.AutoCompactLimit = m.projectList.AutoCompactLimit
+		m.launchConfig.AutoCompactLimit = m.projectExplorer.AutoCompactLimit
 
-		bypass := m.projectList.BypassPerms
-		m.screen = screenModeSelect
-		m.modeSelect = screen.NewModeSelectModelWithBypass(bypass, m.selectedProject.Path)
-		m.modeSelect.SetSize(m.width, m.height)
-		return m, m.modeSelect.LoadSessions(m.selectedProject.Path)
+		bypass := m.projectExplorer.BypassPerms
+		m.screen = screenLauncher
+		m.launcher = screen.NewLauncherModel(bypass, m.selectedProject.Path)
+		m.launcher.SetSize(m.width, m.height)
+		return m, m.launcher.LoadSessions(m.selectedProject.Path)
 
 	case shared.ModeSelectedMsg:
 		m.launchConfig.Mode = msg.Mode
 		m.launchConfig.SkipPermissions = msg.SkipPermissions
 		switch msg.SessionKind {
 		case 1:
-			m.launchConfig.Resume = true
+			m.launchConfig.Prompt = "/resume"
 		case 2:
 			m.launchConfig.SessionID = msg.SessionID
 		}
@@ -134,25 +151,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shared.NavigateMsg:
 		switch msg.Screen {
-		case shared.ScreenProjectList:
-			m.screen = screenProjectList
-			m.projectList = screen.NewProjectListModel()
-			m.projectList.SetSize(m.width, m.height)
-			return m, m.projectList.Init()
-		case shared.ScreenCreateProject:
-			m.screen = screenCreateProject
-			m.createProject = screen.NewCreateProjectModel()
-			m.createProject.SetSize(m.width, m.height)
-			return m, m.createProject.Init()
-		case shared.ScreenEditProject:
-			m.screen = screenEditProject
-			m.editProject = screen.NewEditProjectModel(msg.ProjectName)
-			m.editProject.SetSize(m.width, m.height)
-			if msg.AddRepo {
-				m.editProject.Step = screen.EditStepMethod
-				m.editProject.MethodList = m.editProject.BuildMethodList()
-			}
-			return m, m.editProject.Init()
+		case shared.ScreenProjectExplorer:
+			m.screen = screenProjectExplorer
+			m.projectExplorer = screen.NewProjectExplorerModel()
+			m.projectExplorer.SetSize(m.width, m.height)
+			return m, m.projectExplorer.Init()
+		case shared.ScreenProjectWizard:
+			m.screen = screenProjectWizard
+			m.projectWizard = screen.NewProjectWizardModel()
+			m.projectWizard.SetSize(m.width, m.height)
+			return m, m.projectWizard.Init()
+		case shared.ScreenAddRepo:
+			m.screen = screenAddRepo
+			m.addRepo = screen.NewAddRepoModel(msg.ProjectName)
+			m.addRepo.SetSize(m.width, m.height)
+			return m, m.addRepo.Init()
 		}
 		return m, nil
 
@@ -162,28 +175,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	switch m.screen {
-	case screenProjectList:
-		m.projectList, cmd = m.projectList.Update(msg)
-	case screenCreateProject:
-		m.createProject, cmd = m.createProject.Update(msg)
-	case screenEditProject:
-		m.editProject, cmd = m.editProject.Update(msg)
-	case screenModeSelect:
-		m.modeSelect, cmd = m.modeSelect.Update(msg)
+	case screenProjectExplorer:
+		m.projectExplorer, cmd = m.projectExplorer.Update(msg)
+	case screenProjectWizard:
+		m.projectWizard, cmd = m.projectWizard.Update(msg)
+	case screenAddRepo:
+		m.addRepo, cmd = m.addRepo.Update(msg)
+	case screenLauncher:
+		m.launcher, cmd = m.launcher.Update(msg)
 	}
 	return m, cmd
 }
 
 func (m Model) View() string {
 	switch m.screen {
-	case screenProjectList:
-		return m.projectList.View()
-	case screenCreateProject:
-		return m.createProject.View()
-	case screenEditProject:
-		return m.editProject.View()
-	case screenModeSelect:
-		return m.modeSelect.View()
+	case screenProjectExplorer:
+		return m.projectExplorer.View()
+	case screenProjectWizard:
+		return m.projectWizard.View()
+	case screenAddRepo:
+		return m.addRepo.View()
+	case screenLauncher:
+		return m.launcher.View()
 	}
 	return ""
 }
@@ -197,4 +210,8 @@ func (m Model) LaunchConfig() claude.LaunchConfig {
 		return *m.launchConfig
 	}
 	return claude.LaunchConfig{}
+}
+
+func (m Model) SelectedProject() *project.Project {
+	return m.selectedProject
 }

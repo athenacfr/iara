@@ -42,6 +42,21 @@ You are working in a cw-managed project directory with a single repository.
 - Never modify the root ` + "`.claude/`" + ` directory. To add or update rules, commands, or settings, do it inside the repo's ` + "`.claude/`" + ` directory.
 `
 
+const agentEncouragement = `
+## Agents
+
+You have access to specialized agents via the Agent tool. Use them when beneficial:
+- **researcher** — Read-only code exploration and analysis
+- **implementer** — Focused implementation of a specific task
+- **tester** — Write and run tests
+- **reviewer** — Review code changes for quality and bugs
+
+Prefer agents for:
+- Parallel independent tasks
+- Focused work that benefits from clean context
+- Tasks where the agent's specialization matches the work
+`
+
 // BuildSystemPrompt returns the system prompt string for a project.
 func BuildSystemPrompt(name string) (string, error) {
 	p, err := Get(name)
@@ -59,7 +74,7 @@ func BuildSystemPrompt(name string) (string, error) {
 		tmpl = singleRepoTemplate
 	}
 
-	return fmt.Sprintf(tmpl, strings.Join(repoList, "\n")), nil
+	return fmt.Sprintf(tmpl, strings.Join(repoList, "\n")) + agentEncouragement, nil
 }
 
 

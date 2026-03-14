@@ -172,32 +172,13 @@ func TestLaunchPassesArgs(t *testing.T) {
 	assertContains(t, inv.Args, "hello")
 }
 
-func TestLaunchResumeFlag(t *testing.T) {
-	mockClaudeBin(t)
-	outFile := filepath.Join(t.TempDir(), "out.json")
-	t.Setenv("MOCK_CLAUDE_OUTPUT", outFile)
-
-	err := Launch(LaunchConfig{
-		WorkDir: t.TempDir(),
-		Resume:  true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	inv := readInvocation(t, outFile)
-	assertContains(t, inv.Args, "--continue")
-	assertNotContains(t, inv.Args, "--resume")
-}
-
-func TestLaunchSessionIDOverridesResume(t *testing.T) {
+func TestLaunchSessionIDFlag(t *testing.T) {
 	mockClaudeBin(t)
 	outFile := filepath.Join(t.TempDir(), "out.json")
 	t.Setenv("MOCK_CLAUDE_OUTPUT", outFile)
 
 	err := Launch(LaunchConfig{
 		WorkDir:   t.TempDir(),
-		Resume:    true,
 		SessionID: "abc",
 	})
 	if err != nil {
@@ -207,7 +188,6 @@ func TestLaunchSessionIDOverridesResume(t *testing.T) {
 	inv := readInvocation(t, outFile)
 	assertContains(t, inv.Args, "--resume")
 	assertContains(t, inv.Args, "abc")
-	assertNotContains(t, inv.Args, "--continue")
 }
 
 func TestLaunchPrintFlag(t *testing.T) {

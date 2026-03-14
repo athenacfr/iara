@@ -63,7 +63,7 @@ func PermissionsOverrideFile() string {
 }
 
 // NewSessionFile returns the path to the sideband file that signals the reload
-// loop to start a fresh session instead of resuming with --continue.
+// loop to start a fresh session instead of resuming the previous one.
 func NewSessionFile() string {
 	return filepath.Join(DataDir(), "new-session")
 }
@@ -79,6 +79,12 @@ func AutoCompactFile() string {
 // Used to continue the task after compact completes.
 func CompactContextFile() string {
 	return filepath.Join(DataDir(), "compact-context")
+}
+
+// YoloActiveFile returns the path to the sideband file that signals the reload
+// loop to enter yolo execution mode. Contains the absolute path to the plan file.
+func YoloActiveFile() string {
+	return filepath.Join(DataDir(), "yolo-active")
 }
 
 // BinDir returns the directory where the cw binary is installed.

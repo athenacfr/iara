@@ -54,7 +54,7 @@ type projectsLoadedMsg struct {
 type projectDeletedMsg struct{ name string }
 type projectRenamedMsg2 struct{ oldName, newName string }
 
-type ProjectListModel struct {
+type ProjectExplorerModel struct {
 	fzfList       widget.FzfListModel
 	width, height int
 	loading       bool
@@ -77,9 +77,9 @@ type ProjectListModel struct {
 	projects []project.Project
 }
 
-func NewProjectListModel() ProjectListModel {
+func NewProjectExplorerModel() ProjectExplorerModel {
 	s := project.LoadGlobalSettings()
-	return ProjectListModel{
+	return ProjectExplorerModel{
 		loading:          true,
 		expandedProjects: make(map[string]bool),
 		BypassPerms:      s.BypassPermissions,
@@ -87,7 +87,7 @@ func NewProjectListModel() ProjectListModel {
 	}
 }
 
-func (m ProjectListModel) Init() tea.Cmd {
+func (m ProjectExplorerModel) Init() tea.Cmd {
 	return loadProjects
 }
 
@@ -110,13 +110,13 @@ func removeRepoFromProject(projectName, repoName string) tea.Cmd {
 	}
 }
 
-func (m *ProjectListModel) SetSize(w, h int) {
+func (m *ProjectExplorerModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	m.fzfList.SetSize(w, h-3)
 }
 
-func (m ProjectListModel) selectedProjectName() string {
+func (m ProjectExplorerModel) selectedProjectName() string {
 	item := m.fzfList.SelectedItem()
 	if item == nil {
 		return ""
@@ -132,7 +132,7 @@ func (m ProjectListModel) selectedProjectName() string {
 	return ""
 }
 
-func (m *ProjectListModel) buildTreeItems(projects []project.Project) []widget.FzfItem {
+func (m *ProjectExplorerModel) buildTreeItems(projects []project.Project) []widget.FzfItem {
 	var items []widget.FzfItem
 	for _, p := range projects {
 		full, err := project.Get(p.Name)
@@ -160,7 +160,7 @@ func (m *ProjectListModel) buildTreeItems(projects []project.Project) []widget.F
 	return items
 }
 
-func (m ProjectListModel) Update(msg tea.Msg) (ProjectListModel, tea.Cmd) {
+func (m ProjectExplorerModel) Update(msg tea.Msg) (ProjectExplorerModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case projectsLoadedMsg:
 		m.loading = false
@@ -235,7 +235,7 @@ func (m ProjectListModel) Update(msg tea.Msg) (ProjectListModel, tea.Cmd) {
 			switch msg.String() {
 			case "n":
 				return m, func() tea.Msg {
-					return shared.NavigateMsg{Screen: shared.ScreenCreateProject}
+					return shared.NavigateMsg{Screen: shared.ScreenProjectWizard}
 				}
 			case "t", " ":
 				if projName := m.selectedProjectName(); projName != "" {
@@ -324,7 +324,7 @@ func (m ProjectListModel) Update(msg tea.Msg) (ProjectListModel, tea.Cmd) {
 	return m, nil
 }
 
-func (m ProjectListModel) handleConfirm() (ProjectListModel, tea.Cmd) {
+func (m ProjectExplorerModel) handleConfirm() (ProjectExplorerModel, tea.Cmd) {
 	item := m.fzfList.SelectedItem()
 	if item == nil {
 		return m, nil
@@ -347,18 +347,18 @@ func (m ProjectListModel) handleConfirm() (ProjectListModel, tea.Cmd) {
 
 	case TreeAddItem:
 		return m, func() tea.Msg {
-			return shared.NavigateMsg{Screen: shared.ScreenEditProject, ProjectName: it.ProjectName}
+			return shared.NavigateMsg{Screen: shared.ScreenAddRepo, ProjectName: it.ProjectName}
 		}
 
 	case TreeNewProjectItem:
 		return m, func() tea.Msg {
-			return shared.NavigateMsg{Screen: shared.ScreenCreateProject}
+			return shared.NavigateMsg{Screen: shared.ScreenProjectWizard}
 		}
 	}
 	return m, nil
 }
 
-func (m ProjectListModel) updateRename(msg tea.KeyMsg) (ProjectListModel, tea.Cmd) {
+func (m ProjectExplorerModel) updateRename(msg tea.KeyMsg) (ProjectExplorerModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		newName := strings.TrimSpace(m.renameInput.Value())
@@ -397,7 +397,7 @@ func (m ProjectListModel) updateRename(msg tea.KeyMsg) (ProjectListModel, tea.Cm
 	}
 }
 
-func (m ProjectListModel) View() string {
+func (m ProjectExplorerModel) View() string {
 	if m.loading {
 		return "\n  Loading projects..."
 	}

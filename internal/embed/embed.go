@@ -36,6 +36,11 @@ func HooksDir() string {
 	return filepath.Join(installDir, "hooks")
 }
 
+// AgentsDir returns the path to the extracted agents directory.
+func AgentsDir() string {
+	return filepath.Join(installDir, "agents")
+}
+
 // Install extracts embedded files to the platform-specific data directory.
 func Install() error {
 	return installToDir(paths.DataDir())
@@ -97,7 +102,7 @@ func installToDir(dest string) error {
 	}
 
 	// Clean up files on disk that are no longer embedded
-	managedDirs := []string{"plugins", "modes", "hooks"}
+	managedDirs := []string{"plugins", "modes", "hooks", "agents"}
 	for _, dir := range managedDirs {
 		dirPath := filepath.Join(dest, dir)
 		filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
@@ -123,7 +128,7 @@ func generatePluginsFromCommands(dest string) ([]string, error) {
 	}
 
 	var generated []string
-	for _, cmd := range commands.All() {
+	for _, cmd := range commands.Public() {
 		mdPath := filepath.Join(commandsDir, cmd.Name+".md")
 
 		var body string

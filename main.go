@@ -16,6 +16,7 @@ import (
 
 	"github.com/ahtwr/cw/internal/claude"
 	"github.com/ahtwr/cw/internal/config"
+	"github.com/ahtwr/cw/internal/devlog"
 	cwembed "github.com/ahtwr/cw/internal/embed"
 	"github.com/ahtwr/cw/internal/env"
 	"github.com/ahtwr/cw/internal/paths"
@@ -388,6 +389,10 @@ func main() {
 				}
 			}
 
+			// Manage dev logs: ensure dir exists, truncate oversized logs
+			devlog.EnsureDir(cfg.WorkDir)
+			devlog.TruncateOversized(cfg.WorkDir)
+
 			// Show spinner during quiet compact (Phase 1 of auto-compact)
 			var stopSpinner func()
 			if cfg.Quiet {
@@ -433,7 +438,8 @@ func main() {
 					cwSession.Status = "completed"
 					cwSession.Save(cfg.WorkDir)
 				}
-				// Clean up yolo plan files and sideband
+				// Clean up dev logs and yolo plan files
+				devlog.Cleanup(cfg.WorkDir)
 				if planFiles, err := filepath.Glob(filepath.Join(cfg.WorkDir, ".cw", "yolo", "plan-*.md")); err == nil {
 					for _, f := range planFiles {
 						os.Remove(f)

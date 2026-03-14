@@ -31,6 +31,7 @@ exports[`Project List — navigation › collapses repos by toggling t | 1`] = S
 
 exports[`Project List — navigation › enters search mode with s and filters | 1`] = String.raw`
 ╭────────────────────────────────────────────────────────────────────────────────╮
+│PROJECTS                                                                        │
 │                                                                                │
 │┌──────────────────────────────┐│ alpha-project                                 │
 ││ search...                    ││ opened just now                               │
@@ -42,7 +43,6 @@ exports[`Project List — navigation › enters search mode with s and filters |
 │                                │   backend on detached ✓                       │
 │                                │                                               │
 │                                │   frontend on detached ✓                      │
-│                                │                                               │
 │                                │                                               │
 │                                │                                               │
 │                                │                                               │

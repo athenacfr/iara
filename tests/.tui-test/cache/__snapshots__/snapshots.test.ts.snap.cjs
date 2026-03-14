@@ -69,7 +69,7 @@ exports[`Snapshots › mode select initial render | 1`] = String.raw`
 ││ search...                            ││                                       │
 │└──────────────────────────────────────┘│ Start a fresh conversation with       │
 │▶ + New Session                         │ updated system prompts and config.    │
-│  Continue last session                 │                                       │
+│  List sessions                         │                                       │
 │                                        │                                       │
 │                                        │                                       │
 │                                        │                                       │
@@ -89,6 +89,7 @@ exports[`Snapshots › mode select initial render | 1`] = String.raw`
 
 exports[`Snapshots › project list initial render | 1`] = String.raw`
 ╭────────────────────────────────────────────────────────────────────────────────╮
+│PROJECTS                                                                        │
 │                                                                                │
 │┌──────────────────────────────┐│ snap-project                                  │
 ││ search...                    ││ opened just now                               │
@@ -100,7 +101,6 @@ exports[`Snapshots › project list initial render | 1`] = String.raw`
 │                                │   api on detached ✓                           │
 │                                │                                               │
 │                                │   web on detached ✓                           │
-│                                │                                               │
 │                                │                                               │
 │                                │                                               │
 │                                │                                               │

@@ -149,7 +149,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shared.TaskSelectedMsg:
 		if msg.IsNew {
-			// Launch Claude with /iara:new-task
+			// Launch Claude with /iara:new-task in the project directory
+			m.launchConfig.WorkDir = msg.WorkDir
 			m.launchConfig.Prompt = "/iara:new-task"
 			m.launchConfig.SkipPermissions = true
 			m.launchConfig.AutoSetup = true

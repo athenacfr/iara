@@ -104,7 +104,10 @@ func RenderRepoItem(item widget.FzfItem, displayNum int, cursor, selected bool, 
 
 // RepoPreview renders a preview pane for a GitHub repo item.
 func RepoPreview(item widget.FzfItem, width, height int) string {
-	ri := item.(RepoItem)
+	ri, ok := item.(RepoItem)
+	if !ok {
+		return ""
+	}
 	var lines []string
 	title := ri.NameWithOwner
 	if title == "" {

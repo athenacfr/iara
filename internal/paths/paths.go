@@ -87,6 +87,13 @@ func YoloActiveFile() string {
 	return filepath.Join(DataDir(), "yolo-active")
 }
 
+// TaskSwitchFile returns the path to the sideband file that communicates
+// a newly created task ID from save-task to the reload loop, so it can
+// switch WorkDir to the task's worktree on the next session.
+func TaskSwitchFile() string {
+	return filepath.Join(DataDir(), "task-switch")
+}
+
 // BinDir returns the directory where the iara binary is installed.
 // Override with IARA_BIN_DIR env var.
 // Defaults: macOS /usr/local/bin, Linux/WSL ~/.local/bin

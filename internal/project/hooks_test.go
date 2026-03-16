@@ -185,6 +185,54 @@ func TestEnsureHooksContainsStopHook(t *testing.T) {
 	}
 }
 
+func TestEnsureHooksQuotesPathsWithSpaces(t *testing.T) {
+	dir := setTestProjectsDir(t)
+	projectDir := filepath.Join(dir, "test-project")
+	os.MkdirAll(projectDir, 0755)
+
+	// Simulate macOS-style path with spaces
+	cwRoot := filepath.Join(t.TempDir(), "Library", "Application Support", "iara")
+	os.MkdirAll(filepath.Join(cwRoot, "hooks"), 0755)
+
+	err := EnsureHooks("test-project", cwRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(projectDir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := string(data)
+	// Commands must be shell-quoted to handle spaces
+	if !strings.Contains(content, "'") {
+		t.Error("hook commands should be shell-quoted for paths with spaces")
+	}
+	// The path should appear quoted, not bare
+	if strings.Contains(content, "Application Support/iara/hooks/auto-compact.sh\"") &&
+		!strings.Contains(content, "'") {
+		t.Error("bare path with spaces would break shell execution")
+	}
+
+	// Verify the JSON is still valid
+	var cfg hooksConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("invalid settings JSON: %v", err)
+	}
+
+	// Verify hook commands contain quoted paths
+	for _, groups := range cfg.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				if !strings.HasPrefix(h.Command, "'") || !strings.HasSuffix(h.Command, "'") {
+					t.Errorf("hook command not shell-quoted: %s", h.Command)
+				}
+			}
+		}
+	}
+}
+
 func TestEnsureHooksContainsPreWriteGuard(t *testing.T) {
 	dir := setTestProjectsDir(t)
 	projectDir := filepath.Join(dir, "test-project")

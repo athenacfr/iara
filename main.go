@@ -266,6 +266,11 @@ func internalSaveTask(jsonStr string) {
 		os.Exit(1)
 	}
 
+	// Write task ID to sideband file so the reload loop can switch to the worktree
+	if err := os.WriteFile(paths.TaskSwitchFile(), []byte(t.ID), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "save-task: warning: cannot write task-switch file: %v\n", err)
+	}
+
 	fmt.Printf("Task '%s' created (branch: %s)\n", t.Name, t.Branch)
 }
 
@@ -672,6 +677,28 @@ func main() {
 					cfg.SkipPermissions,
 				)
 				cwSession.Save(sessionsDir)
+			}
+
+			// Check for task-switch sideband file (written by save-task)
+			if taskIDData, err := os.ReadFile(paths.TaskSwitchFile()); err == nil {
+				os.Remove(paths.TaskSwitchFile())
+				taskID := strings.TrimSpace(string(taskIDData))
+				projectDir := cfg.WorkDir
+				if t, err := task.Load(projectDir, taskID); err == nil {
+					cfg.TaskID = t.ID
+					cfg.TaskName = t.Name
+					cfg.WorkDir = task.WorktreeBase(projectDir, t.Name)
+					sessionsDir = task.SessionsDir(projectDir, t.ID)
+					cfg.SessionsDir = sessionsDir
+					// Restore permissions from global settings (new-task forces bypass)
+					s := project.LoadGlobalSettings()
+					cfg.SkipPermissions = s.BypassPermissions
+					// Re-save the new session in the task-scoped sessions dir
+					if cwSession != nil {
+						cwSession.SkipPermissions = cfg.SkipPermissions
+						cwSession.Save(sessionsDir)
+					}
+				}
 			}
 
 			// Reload: clear one-shot fields

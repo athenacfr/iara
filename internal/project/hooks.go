@@ -4,9 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ahtwr/iara/internal/paths"
 )
+
+// shellQuote wraps a path in single quotes for safe shell execution.
+// Internal single quotes are escaped as '\'' (end quote, escaped quote, start quote).
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
 
 type hookEntry struct {
 	Type    string `json:"type"`
@@ -29,9 +36,9 @@ func EnsureHooks(name, cwRoot string) error {
 		return err
 	}
 
-	preWriteGuard := filepath.Join(cwRoot, "hooks", "pre-write-guard.sh")
-	autoCompact := filepath.Join(cwRoot, "hooks", "auto-compact.sh")
-	yoloStop := filepath.Join(cwRoot, "hooks", "yolo-stop.sh")
+	preWriteGuard := shellQuote(filepath.Join(cwRoot, "hooks", "pre-write-guard.sh"))
+	autoCompact := shellQuote(filepath.Join(cwRoot, "hooks", "auto-compact.sh"))
+	yoloStop := shellQuote(filepath.Join(cwRoot, "hooks", "yolo-stop.sh"))
 
 	cfg := hooksConfig{
 		Hooks: map[string][]matcherGroup{

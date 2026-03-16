@@ -300,6 +300,10 @@ func (m ProjectExplorerModel) Update(msg tea.Msg) (ProjectExplorerModel, tea.Cmd
 					AutoCompactLimit:  m.AutoCompactLimit,
 				})
 				return m, nil
+			case ",": // settings
+				return m, func() tea.Msg {
+					return shared.NavigateMsg{Screen: shared.ScreenSettings}
+				}
 			case "d":
 				if item := m.fzfList.SelectedItem(); item != nil {
 					switch it := item.(type) {
@@ -447,39 +451,41 @@ func (m ProjectExplorerModel) View() string {
 		compactLabel = style.AccentStyle.Render(fmt.Sprintf("%d%%", m.AutoCompactLimit))
 	}
 	keybar += "    " + style.KeyStyle.Render("c") + style.DimStyle.Render("ompact") + "  " + compactLabel
+	keybar += "    " + style.KeyStyle.Render(",") + style.DimStyle.Render(" settings")
 
 	return header + "\n" + m.fzfList.View() + "\n\n" + keybar
 }
 
 // Render callbacks
 
-func RenderTreeItem(item widget.FzfItem, index int, cursor, selected bool, matched []int, width int) string {
+func RenderTreeItem(item widget.FzfItem, displayNum int, cursor, selected bool, matched []int, width int) string {
 	switch it := item.(type) {
 	case TreeProjectItem:
-		return renderTreeProject(it, cursor, matched)
+		return renderTreeProject(it, displayNum, cursor, matched)
 	case TreeRepoItem:
-		return renderTreeRepo(it, cursor, matched)
+		return renderTreeRepo(it, displayNum, cursor, matched)
 	case TreeAddItem:
-		return renderTreeAdd(it, cursor)
+		return renderTreeAdd(it, displayNum, cursor)
 	case TreeNewProjectItem:
-		return renderTreeNewProject(cursor)
+		return renderTreeNewProject(displayNum, cursor)
 	}
 	return ""
 }
 
-func renderTreeProject(it TreeProjectItem, cursor bool, matched []int) string {
+func renderTreeProject(it TreeProjectItem, displayNum int, cursor bool, matched []int) string {
 	prefix := "  "
 	if cursor {
 		prefix = style.FzfCursorPrefix.Render("▶ ")
 	}
 
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
 	name := widget.HighlightMatches(it.Name, matched)
 	repoCount := fmt.Sprintf("%d repo", it.RepoCount)
 	if it.RepoCount != 1 {
 		repoCount += "s"
 	}
 
-	line := fmt.Sprintf("%s%s  %s", prefix, style.AccentStyle.Bold(true).Render(name), style.DimStyle.Render(repoCount))
+	line := fmt.Sprintf("%s%s%s  %s", prefix, numStr, style.AccentStyle.Bold(true).Render(name), style.DimStyle.Render(repoCount))
 	if cursor {
 		hints := "  " + style.DimStyle.Render("[") +
 			style.KeyStyle.Render("t") + style.DimStyle.Render("oggle ") +
@@ -491,17 +497,19 @@ func renderTreeProject(it TreeProjectItem, cursor bool, matched []int) string {
 	return line
 }
 
-func renderTreeRepo(it TreeRepoItem, cursor bool, matched []int) string {
+func renderTreeRepo(it TreeRepoItem, displayNum int, cursor bool, matched []int) string {
 	connector := "├─"
 	if it.IsLast {
 		connector = "├─"
 	}
 
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
+
 	var prefix string
 	if cursor {
-		prefix = style.FzfCursorPrefix.Render("▶ ") + style.TreeBranchStyle.Render(connector) + " "
+		prefix = style.FzfCursorPrefix.Render("▶ ") + numStr + style.TreeBranchStyle.Render(connector) + " "
 	} else {
-		prefix = "  " + style.TreeBranchStyle.Render(connector) + " "
+		prefix = "  " + numStr + style.TreeBranchStyle.Render(connector) + " "
 	}
 
 	name := widget.HighlightMatches(it.Name, matched)
@@ -523,25 +531,28 @@ func renderTreeRepo(it TreeRepoItem, cursor bool, matched []int) string {
 	return line
 }
 
-func renderTreeAdd(it TreeAddItem, cursor bool) string {
+func renderTreeAdd(it TreeAddItem, displayNum int, cursor bool) string {
 	connector := "└─"
+
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
 
 	var prefix string
 	if cursor {
-		prefix = style.FzfCursorPrefix.Render("▶ ") + style.TreeBranchStyle.Render(connector) + " "
+		prefix = style.FzfCursorPrefix.Render("▶ ") + numStr + style.TreeBranchStyle.Render(connector) + " "
 	} else {
-		prefix = "  " + style.TreeBranchStyle.Render(connector) + " "
+		prefix = "  " + numStr + style.TreeBranchStyle.Render(connector) + " "
 	}
 
 	return prefix + style.TreeAddStyle.Render("+ add repo")
 }
 
-func renderTreeNewProject(cursor bool) string {
+func renderTreeNewProject(displayNum int, cursor bool) string {
 	prefix := "  "
 	if cursor {
 		prefix = style.FzfCursorPrefix.Render("▶ ")
 	}
-	return prefix + style.TreeAddStyle.Render("+ new project")
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
+	return prefix + numStr + style.TreeAddStyle.Render("+ new project")
 }
 
 // Preview callback

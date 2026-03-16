@@ -422,6 +422,134 @@ func TestDirtyFilesError(t *testing.T) {
 	}
 }
 
+// --- WorktreeAdd ---
+
+func TestWorktreeAdd(t *testing.T) {
+	repo := initTestRepo(t)
+	worktreePath := filepath.Join(t.TempDir(), "my-worktree")
+
+	err := WorktreeAdd(repo, worktreePath, "feature-branch")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the worktree directory exists
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		t.Error("worktree directory should exist")
+	}
+
+	// Verify .git file exists (worktrees have a .git file, not dir)
+	if !IsRepo(worktreePath) {
+		t.Error("worktree should be detected as a repo")
+	}
+
+	// Verify it's on the right branch
+	branch := Branch(worktreePath)
+	if branch != "feature-branch" {
+		t.Errorf("Branch() = %q, want %q", branch, "feature-branch")
+	}
+}
+
+func TestWorktreeAddBadRepo(t *testing.T) {
+	err := WorktreeAdd("/nonexistent/repo", "/tmp/wt", "branch")
+	if err == nil {
+		t.Error("expected error for nonexistent repo")
+	}
+}
+
+// --- WorktreeRemove ---
+
+func TestWorktreeRemove(t *testing.T) {
+	repo := initTestRepo(t)
+	worktreePath := filepath.Join(t.TempDir(), "wt-to-remove")
+
+	// Create a worktree first
+	if err := WorktreeAdd(repo, worktreePath, "temp-branch"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it exists
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		t.Fatal("worktree should exist before removal")
+	}
+
+	// Remove it
+	if err := WorktreeRemove(repo, worktreePath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it's gone
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Error("worktree directory should be removed")
+	}
+}
+
+func TestWorktreeRemoveBadPath(t *testing.T) {
+	repo := initTestRepo(t)
+	err := WorktreeRemove(repo, "/nonexistent/worktree")
+	if err == nil {
+		t.Error("expected error for nonexistent worktree")
+	}
+}
+
+// --- DefaultBranch ---
+
+func TestDefaultBranchMain(t *testing.T) {
+	tmp := t.TempDir()
+	repoPath := filepath.Join(tmp, "repo")
+	os.MkdirAll(repoPath, 0755)
+
+	cmds := [][]string{
+		{"git", "init", "-b", "main", repoPath},
+		{"git", "-C", repoPath, "config", "user.email", "test@test.com"},
+		{"git", "-C", repoPath, "config", "user.name", "Test"},
+		{"git", "-C", repoPath, "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cmd %v failed: %s\n%s", args, err, out)
+		}
+	}
+
+	got := DefaultBranch(repoPath)
+	if got != "main" {
+		t.Errorf("DefaultBranch() = %q, want %q", got, "main")
+	}
+}
+
+func TestDefaultBranchMaster(t *testing.T) {
+	tmp := t.TempDir()
+	repoPath := filepath.Join(tmp, "repo")
+	os.MkdirAll(repoPath, 0755)
+
+	cmds := [][]string{
+		{"git", "init", "-b", "master", repoPath},
+		{"git", "-C", repoPath, "config", "user.email", "test@test.com"},
+		{"git", "-C", repoPath, "config", "user.name", "Test"},
+		{"git", "-C", repoPath, "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cmd %v failed: %s\n%s", args, err, out)
+		}
+	}
+
+	got := DefaultBranch(repoPath)
+	if got != "master" {
+		t.Errorf("DefaultBranch() = %q, want %q", got, "master")
+	}
+}
+
+func TestDefaultBranchFallback(t *testing.T) {
+	// Nonexistent repo should fall back to "main"
+	got := DefaultBranch("/nonexistent/repo")
+	if got != "main" {
+		t.Errorf("DefaultBranch(bad path) = %q, want %q", got, "main")
+	}
+}
+
 // initTestRepo creates a git repo with one commit in a temp dir.
 func initTestRepo(t *testing.T) string {
 	t.Helper()

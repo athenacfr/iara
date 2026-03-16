@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/ahtwr/cw/internal/tui/style"
@@ -213,6 +214,23 @@ func (m FzfListModel) HandleKey(keyStr string) (FzfListModel, bool, interface{})
 		}
 	}
 
+	// Number keys 1-9 jump to the Nth non-divider item
+	if len(keyStr) == 1 && keyStr[0] >= '1' && keyStr[0] <= '9' {
+		targetNum := int(keyStr[0] - '0')
+		count := 0
+		for i, match := range m.matches {
+			if !IsDivider(m.items[match.Index]) {
+				count++
+				if count == targetNum {
+					m.cursor = i
+					m.clampScroll()
+					return m, true, nil
+				}
+			}
+		}
+		return m, true, nil
+	}
+
 	switch keyStr {
 	case "up", "k":
 		return m.handleNav("up")
@@ -331,17 +349,34 @@ func (m FzfListModel) View() string {
 	var listLines []string
 	totalLines := 0
 
+	// Count non-dividers before offset for correct numbering
+	displayNum := 0
+	for i := 0; i < m.offset && i < len(m.matches); i++ {
+		if !IsDivider(m.items[m.matches[i].Index]) {
+			displayNum++
+		}
+	}
+
 	for i := m.offset; i < len(m.matches); i++ {
 		match := m.matches[i]
 		isCursor := i == m.cursor
 		isSelected := m.selected[match.Index]
 		item := m.items[match.Index]
 
+		isDividerItem := IsDivider(item)
+		if !isDividerItem {
+			displayNum++
+		}
+		itemDisplayNum := displayNum
+		if isDividerItem {
+			itemDisplayNum = 0
+		}
+
 		var rendered string
 		if m.cfg.RenderItem != nil {
-			rendered = m.cfg.RenderItem(item, match.Index, isCursor, isSelected, match.MatchedIndexes, listWidth-1)
+			rendered = m.cfg.RenderItem(item, itemDisplayNum, isCursor, isSelected, match.MatchedIndexes, listWidth-1)
 		} else {
-			rendered = m.defaultRenderItem(item, isCursor, isSelected, match.MatchedIndexes)
+			rendered = m.defaultRenderItem(item, itemDisplayNum, isCursor, isSelected, match.MatchedIndexes)
 			if listWidth > 0 {
 				rendered = Truncate(rendered, listWidth-1)
 			}
@@ -426,7 +461,7 @@ func (m FzfListModel) renderPrompt(width int) string {
 	return top + "\n" + mid + "\n" + bot
 }
 
-func (m FzfListModel) defaultRenderItem(item FzfItem, isCursor, isSelected bool, matched []int) string {
+func (m FzfListModel) defaultRenderItem(item FzfItem, displayNum int, isCursor, isSelected bool, matched []int) string {
 	if IsDivider(item) {
 		return style.FzfDividerStyle.Render("── " + item.FilterValue() + " ──")
 	}
@@ -445,9 +480,10 @@ func (m FzfListModel) defaultRenderItem(item FzfItem, isCursor, isSelected bool,
 		}
 	}
 
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
 	highlighted := HighlightMatches(text, matched)
 
-	return prefix + highlighted
+	return prefix + numStr + highlighted
 }
 
 // HighlightMatches highlights matched character positions in the text.

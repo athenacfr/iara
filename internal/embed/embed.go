@@ -26,11 +26,6 @@ func PluginDir() string {
 	return filepath.Join(installDir, "plugins")
 }
 
-// ModesDir returns the path to the extracted modes directory.
-func ModesDir() string {
-	return filepath.Join(installDir, "modes")
-}
-
 // HooksDir returns the path to the extracted hooks directory.
 func HooksDir() string {
 	return filepath.Join(installDir, "hooks")
@@ -102,7 +97,7 @@ func installToDir(dest string) error {
 	}
 
 	// Clean up files on disk that are no longer embedded
-	managedDirs := []string{"plugins", "modes", "hooks", "agents"}
+	managedDirs := []string{"plugins", "hooks", "agents"}
 	for _, dir := range managedDirs {
 		dirPath := filepath.Join(dest, dir)
 		filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {

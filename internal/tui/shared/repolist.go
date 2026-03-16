@@ -73,7 +73,7 @@ func ListenForCloneProgress(ch <-chan git.CloneProgress) tea.Cmd {
 }
 
 // RenderRepoItem renders a GitHub repo item in an fzf list.
-func RenderRepoItem(item widget.FzfItem, index int, cursor, selected bool, matched []int, width int) string {
+func RenderRepoItem(item widget.FzfItem, displayNum int, cursor, selected bool, matched []int, width int) string {
 	if widget.IsDivider(item) {
 		d := item.(OrgDividerItem)
 		return style.FzfDividerStyle.Render("  ── " + d.Name + " ──")
@@ -86,6 +86,8 @@ func RenderRepoItem(item widget.FzfItem, index int, cursor, selected bool, match
 		prefix = style.FzfCursorPrefix.Render("▶ ")
 	}
 
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
+
 	marker := style.FzfMarkerNormal.Render("○ ")
 	if selected {
 		marker = style.FzfMarkerSelected.Render("● ")
@@ -97,7 +99,7 @@ func RenderRepoItem(item widget.FzfItem, index int, cursor, selected bool, match
 		lang = " " + style.DimStyle.Render("["+ri.PrimaryLanguage.Name+"]")
 	}
 
-	return prefix + marker + name + lang
+	return prefix + numStr + marker + name + lang
 }
 
 // RepoPreview renders a preview pane for a GitHub repo item.

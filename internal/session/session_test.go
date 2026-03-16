@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,21 +34,21 @@ func TestNew(t *testing.T) {
 }
 
 func TestSaveAndLoad(t *testing.T) {
-	dir := t.TempDir()
+	sessDir := t.TempDir()
 
 	s := New("save-test", "research", true)
 	s.Summary = "Test session"
 
-	if err := s.Save(dir); err != nil {
+	if err := s.Save(sessDir); err != nil {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, ".cw", "sessions", "save-test.json")
+	path := filepath.Join(sessDir, "save-test.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("session file not created: %v", err)
 	}
 
-	loaded, err := Load(dir, "save-test")
+	loaded, err := Load(sessDir, "save-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,27 +70,27 @@ func TestSaveAndLoad(t *testing.T) {
 }
 
 func TestLoadMissing(t *testing.T) {
-	dir := t.TempDir()
-	_, err := Load(dir, "nonexistent")
+	sessDir := t.TempDir()
+	_, err := Load(sessDir, "nonexistent")
 	if err == nil {
 		t.Error("expected error for missing session")
 	}
 }
 
 func TestList(t *testing.T) {
-	dir := t.TempDir()
+	sessDir := t.TempDir()
 
 	s1 := New("session-1", "code", false)
 	s1.LastActive = "2025-01-15T10:00:00Z"
 	s1.Summary = "First session"
-	s1.Save(dir)
+	s1.Save(sessDir)
 
 	s2 := New("session-2", "research", false)
 	s2.LastActive = "2025-01-15T12:00:00Z"
 	s2.Summary = "Second session"
-	s2.Save(dir)
+	s2.Save(sessDir)
 
-	sessions, err := List(dir)
+	sessions, err := List(sessDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +108,9 @@ func TestList(t *testing.T) {
 }
 
 func TestListEmpty(t *testing.T) {
-	dir := t.TempDir()
-	sessions, err := List(dir)
+	// Use a non-existent subdirectory so ReadDir returns IsNotExist
+	sessDir := filepath.Join(t.TempDir(), "sessions")
+	sessions, err := List(sessDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,17 +120,15 @@ func TestListEmpty(t *testing.T) {
 }
 
 func TestListSkipsNonJSON(t *testing.T) {
-	dir := t.TempDir()
-	sessDir := filepath.Join(dir, ".cw", "sessions")
-	os.MkdirAll(sessDir, 0755)
+	sessDir := t.TempDir()
 
 	os.WriteFile(filepath.Join(sessDir, "notes.txt"), []byte("ignore"), 0644)
 	os.MkdirAll(filepath.Join(sessDir, "subdir"), 0755)
 
 	s := New("valid", "code", false)
-	s.Save(dir)
+	s.Save(sessDir)
 
-	sessions, err := List(dir)
+	sessions, err := List(sessDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,16 +138,16 @@ func TestListSkipsNonJSON(t *testing.T) {
 }
 
 func TestTouch(t *testing.T) {
-	dir := t.TempDir()
+	sessDir := t.TempDir()
 
 	s := New("touch-test", "code", false)
 	s.LastActive = "2020-01-01T00:00:00Z"
-	s.Save(dir)
+	s.Save(sessDir)
 
 	before := s.LastActive
 
 	time.Sleep(10 * time.Millisecond)
-	if err := s.Touch(dir); err != nil {
+	if err := s.Touch(sessDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,34 +155,34 @@ func TestTouch(t *testing.T) {
 		t.Error("expected LastActive to be updated")
 	}
 
-	loaded, _ := Load(dir, "touch-test")
+	loaded, _ := Load(sessDir, "touch-test")
 	if loaded.LastActive == before {
 		t.Error("expected persisted LastActive to be updated")
 	}
 }
 
 func TestDelete(t *testing.T) {
-	dir := t.TempDir()
+	sessDir := t.TempDir()
 
 	s := New("delete-me", "code", false)
-	s.Save(dir)
+	s.Save(sessDir)
 
-	if _, err := Load(dir, "delete-me"); err != nil {
+	if _, err := Load(sessDir, "delete-me"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := Delete(dir, "delete-me"); err != nil {
+	if err := Delete(sessDir, "delete-me"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := Load(dir, "delete-me"); err == nil {
+	if _, err := Load(sessDir, "delete-me"); err == nil {
 		t.Error("expected error after deletion")
 	}
 }
 
 func TestDeleteMissing(t *testing.T) {
-	dir := t.TempDir()
-	err := Delete(dir, "nonexistent")
+	sessDir := t.TempDir()
+	err := Delete(sessDir, "nonexistent")
 	if err == nil {
 		t.Error("expected error deleting nonexistent session")
 	}
@@ -325,38 +325,46 @@ func TestParseTimeInvalid(t *testing.T) {
 	}
 }
 
-// --- ExtractSummary ---
+// --- extractConversationExcerpt ---
 
-func TestExtractSummaryFromJSONL(t *testing.T) {
-	// Create a fake Claude projects dir structure
+func TestExcerptFromJSONL(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
 	workDir := "/home/testuser/projects/myproject"
 	sessionID := "test-session-123"
 
-	// Claude encodes workDir by replacing "/" with "-"
 	encoded := "-home-testuser-projects-myproject"
 	jsonlDir := filepath.Join(home, ".claude", "projects", encoded)
 	os.MkdirAll(jsonlDir, 0755)
 
-	// Write a fake JSONL with user messages
 	lines := []string{
 		`{"type":"progress","slug":"calm-exploring-turtle"}`,
 		`{"type":"user","message":{"role":"user","content":"<command-message>cw:yolo</command-message>"}}`,
 		`{"type":"user","message":{"role":"user","content":"fix the login page"}}`,
+		`{"type":"assistant","message":{"role":"assistant","content":"I'll fix the login page now."}}`,
 		`{"type":"user","message":{"role":"user","content":"also update the tests"}}`,
 	}
 	jsonlPath := filepath.Join(jsonlDir, sessionID+".jsonl")
 	os.WriteFile(jsonlPath, []byte(joinTestLines(lines)), 0644)
 
-	got := ExtractSummary(sessionID, workDir)
-	if got != "fix the login page" {
-		t.Errorf("ExtractSummary = %q, want %q", got, "fix the login page")
+	got := extractConversationExcerpt(sessionID, workDir)
+	if !strings.Contains(got, "User: fix the login page") {
+		t.Errorf("expected user message in excerpt, got %q", got)
+	}
+	if !strings.Contains(got, "Assistant: I'll fix the login page now.") {
+		t.Errorf("expected assistant message in excerpt, got %q", got)
+	}
+	if !strings.Contains(got, "User: also update the tests") {
+		t.Errorf("expected second user message in excerpt, got %q", got)
+	}
+	// Command messages should be skipped
+	if strings.Contains(got, "cw:yolo") {
+		t.Errorf("excerpt should not contain command messages, got %q", got)
 	}
 }
 
-func TestExtractSummarySkipsCommands(t *testing.T) {
+func TestExcerptSkipsCommands(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -375,13 +383,13 @@ func TestExtractSummarySkipsCommands(t *testing.T) {
 	jsonlPath := filepath.Join(jsonlDir, sessionID+".jsonl")
 	os.WriteFile(jsonlPath, []byte(joinTestLines(lines)), 0644)
 
-	got := ExtractSummary(sessionID, workDir)
-	if got != "hello world" {
-		t.Errorf("ExtractSummary = %q, want %q", got, "hello world")
+	got := extractConversationExcerpt(sessionID, workDir)
+	if got != "User: hello world" {
+		t.Errorf("excerpt = %q, want %q", got, "User: hello world")
 	}
 }
 
-func TestExtractSummaryContentArray(t *testing.T) {
+func TestExcerptContentArray(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -398,13 +406,13 @@ func TestExtractSummaryContentArray(t *testing.T) {
 	jsonlPath := filepath.Join(jsonlDir, sessionID+".jsonl")
 	os.WriteFile(jsonlPath, []byte(joinTestLines(lines)), 0644)
 
-	got := ExtractSummary(sessionID, workDir)
-	if got != "array content here" {
-		t.Errorf("ExtractSummary = %q, want %q", got, "array content here")
+	got := extractConversationExcerpt(sessionID, workDir)
+	if got != "User: array content here" {
+		t.Errorf("excerpt = %q, want %q", got, "User: array content here")
 	}
 }
 
-func TestExtractSummaryTruncatesLong(t *testing.T) {
+func TestExcerptTruncatesLongMessages(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -415,30 +423,66 @@ func TestExtractSummaryTruncatesLong(t *testing.T) {
 	jsonlDir := filepath.Join(home, ".claude", "projects", encoded)
 	os.MkdirAll(jsonlDir, 0755)
 
-	longMsg := strings.Repeat("x", 200)
+	longMsg := strings.Repeat("x", 300)
 	lines := []string{
 		`{"type":"user","message":{"role":"user","content":"` + longMsg + `"}}`,
 	}
 	jsonlPath := filepath.Join(jsonlDir, sessionID+".jsonl")
 	os.WriteFile(jsonlPath, []byte(joinTestLines(lines)), 0644)
 
-	got := ExtractSummary(sessionID, workDir)
-	if len(got) != 120 {
-		t.Errorf("expected truncated to 120 chars, got %d", len(got))
+	got := extractConversationExcerpt(sessionID, workDir)
+	// "User: " (6) + 200 runes + "..." (3) = 209
+	if !strings.HasSuffix(got, "...") {
+		t.Errorf("expected truncated message to end with '...', got %q", got)
+	}
+	// Should have exactly 200 x's
+	content := strings.TrimPrefix(got, "User: ")
+	content = strings.TrimSuffix(content, "...")
+	if len(content) != 200 {
+		t.Errorf("expected 200 rune content, got %d", len(content))
 	}
 }
 
-func TestExtractSummaryMissingFile(t *testing.T) {
+func TestExcerptLimitsMessagePairs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	got := ExtractSummary("nonexistent", "/no/such/dir")
+	workDir := "/test/limit"
+	sessionID := "limit-session"
+
+	encoded := "-test-limit"
+	jsonlDir := filepath.Join(home, ".claude", "projects", encoded)
+	os.MkdirAll(jsonlDir, 0755)
+
+	// Create 10 user messages — should only include first 5
+	var lines []string
+	for i := 0; i < 10; i++ {
+		lines = append(lines, fmt.Sprintf(`{"type":"user","message":{"role":"user","content":"message %d"}}`, i))
+	}
+	jsonlPath := filepath.Join(jsonlDir, sessionID+".jsonl")
+	os.WriteFile(jsonlPath, []byte(joinTestLines(lines)), 0644)
+
+	got := extractConversationExcerpt(sessionID, workDir)
+	count := strings.Count(got, "User: message")
+	if count != 5 {
+		t.Errorf("expected 5 user messages, got %d in:\n%s", count, got)
+	}
+	if strings.Contains(got, "message 5") {
+		t.Errorf("should not contain message 5+, got:\n%s", got)
+	}
+}
+
+func TestExcerptMissingFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := extractConversationExcerpt("nonexistent", "/no/such/dir")
 	if got != "" {
 		t.Errorf("expected empty for missing file, got %q", got)
 	}
 }
 
-func TestExtractSummaryNoUserMessages(t *testing.T) {
+func TestExcerptNoUserMessages(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -456,7 +500,7 @@ func TestExtractSummaryNoUserMessages(t *testing.T) {
 	jsonlPath := filepath.Join(jsonlDir, sessionID+".jsonl")
 	os.WriteFile(jsonlPath, []byte(joinTestLines(lines)), 0644)
 
-	got := ExtractSummary(sessionID, workDir)
+	got := extractConversationExcerpt(sessionID, workDir)
 	if got != "" {
 		t.Errorf("expected empty for no user messages, got %q", got)
 	}

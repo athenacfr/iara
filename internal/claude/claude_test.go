@@ -252,6 +252,43 @@ func TestLaunchSystemPromptsJoined(t *testing.T) {
 	}
 }
 
+// --- Agent flag ---
+
+func TestLaunchAgentFlag(t *testing.T) {
+	mockClaudeBin(t)
+	outFile := filepath.Join(t.TempDir(), "out.json")
+	t.Setenv("MOCK_CLAUDE_OUTPUT", outFile)
+
+	err := Launch(LaunchConfig{
+		WorkDir: t.TempDir(),
+		Mode:    config.Mode{Name: "research", Agent: "researcher"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inv := readInvocation(t, outFile)
+	assertContains(t, inv.Args, "--agent")
+	assertContains(t, inv.Args, "researcher")
+}
+
+func TestLaunchNoAgentFlagForCodeMode(t *testing.T) {
+	mockClaudeBin(t)
+	outFile := filepath.Join(t.TempDir(), "out.json")
+	t.Setenv("MOCK_CLAUDE_OUTPUT", outFile)
+
+	err := Launch(LaunchConfig{
+		WorkDir: t.TempDir(),
+		Mode:    config.Mode{Name: "code"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inv := readInvocation(t, outFile)
+	assertNotContains(t, inv.Args, "--agent")
+}
+
 // --- Environment variables ---
 
 func TestLaunchSetsEnvVars(t *testing.T) {

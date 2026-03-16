@@ -24,10 +24,15 @@ func TestRequiredCommandsExist(t *testing.T) {
 		"mode",
 		"permissions",
 		"help",
-		"new-intention",
+		"new-task",
 		"yolo",
 		"yolo-start",
 		"yolo-stop",
+		"new-task",
+		"finish-task",
+		"setup-project",
+		"save-task",
+		"complete-task",
 	}
 
 	all := All()
@@ -45,7 +50,7 @@ func TestRequiredCommandsExist(t *testing.T) {
 
 func TestCLICommandsHaveCLICommand(t *testing.T) {
 	// Commands that map to internal CLI should have CLICommand set
-	cliCommands := []string{"compact-and-continue", "new-session", "reload", "open-project", "switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop"}
+	cliCommands := []string{"compact-and-continue", "new-session", "reload", "open-project", "switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop", "save-task", "complete-task"}
 
 	byName := commandsByName()
 	for _, name := range cliCommands {
@@ -62,7 +67,7 @@ func TestCLICommandsHaveCLICommand(t *testing.T) {
 
 func TestPromptCommandsHavePluginBody(t *testing.T) {
 	// Prompt-only commands should have PluginBody set
-	promptCommands := []string{"mode", "permissions", "help", "new-intention", "yolo"}
+	promptCommands := []string{"mode", "permissions", "help", "new-task", "finish-task", "setup-project", "yolo"}
 
 	byName := commandsByName()
 	for _, name := range promptCommands {
@@ -94,7 +99,7 @@ func TestAllCommandsHaveName(t *testing.T) {
 }
 
 func TestInternalCommandsMarked(t *testing.T) {
-	internal := []string{"switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop"}
+	internal := []string{"switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop", "save-task", "complete-task"}
 	byName := commandsByName()
 
 	for _, name := range internal {
@@ -122,7 +127,7 @@ func TestPublicExcludesInternal(t *testing.T) {
 	for _, c := range pub {
 		pubNames[c.Name] = true
 	}
-	for _, name := range []string{"switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop"} {
+	for _, name := range []string{"switch-mode", "switch-permissions", "save-metadata", "yolo-start", "yolo-stop", "save-task", "complete-task"} {
 		if pubNames[name] {
 			t.Errorf("internal command %q should not be in Public()", name)
 		}
@@ -130,7 +135,7 @@ func TestPublicExcludesInternal(t *testing.T) {
 }
 
 func TestPublicCommandsNotInternal(t *testing.T) {
-	publicNames := []string{"compact-and-continue", "new-session", "reload", "open-project", "mode", "permissions", "help", "yolo", "new-intention"}
+	publicNames := []string{"compact-and-continue", "new-session", "reload", "open-project", "mode", "permissions", "help", "yolo", "new-task", "finish-task", "setup-project"}
 	byName := commandsByName()
 
 	for _, name := range publicNames {

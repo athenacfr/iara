@@ -68,8 +68,8 @@ exports[`Snapshots › mode select initial render | 1`] = String.raw`
 │┌──────────────────────────────────────┐│ New Session                           │
 ││ search...                            ││                                       │
 │└──────────────────────────────────────┘│ Start a fresh conversation with       │
-│▶ + New Session                         │ updated system prompts and config.    │
-│  List sessions                         │                                       │
+│▶ 1. + New Session                      │ updated system prompts and config.    │
+│  2. List sessions                      │                                       │
 │                                        │                                       │
 │                                        │                                       │
 │                                        │                                       │
@@ -94,9 +94,9 @@ exports[`Snapshots › project list initial render | 1`] = String.raw`
 │┌──────────────────────────────┐│ snap-project                                  │
 ││ search...                    ││ opened just now                               │
 │└──────────────────────────────┘│                                               │
-│▶ snap-project  2 repos  [toggle│ Snap Project                                  │
-│rename delete]                  │                                               │
-│  + new project                 │ For snapshot tests                            │
+│▶ 1. snap-project  2 repos      │ Snap Project                                  │
+│[toggle rename delete]          │                                               │
+│  2. + new project              │ For snapshot tests                            │
 │                                │                                               │
 │                                │   api on detached ✓                           │
 │                                │                                               │
@@ -112,7 +112,7 @@ exports[`Snapshots › project list initial render | 1`] = String.raw`
 │                                                                                │
 │                                                                                │
 │                                                                                │
-│permissions  bypass    compact  off                                             │
+│permissions  bypass    compact  off    , settings                               │
 ╰────────────────────────────────────────────────────────────────────────────────╯
 `;
 
@@ -123,9 +123,9 @@ exports[`Snapshots › project list with expanded repos | 1`] = String.raw`
 │┌──────────────────────────────┐│ snap-project                                  │
 ││ search...                    ││ opened just now                               │
 │└──────────────────────────────┘│                                               │
-│▶ snap-project  2 repos  [toggle│ Snap Project                                  │
-│rename delete]                  │                                               │
-│  + new project                 │ For snapshot tests                            │
+│▶ 1. snap-project  2 repos      │ Snap Project                                  │
+│[toggle rename delete]          │                                               │
+│  2. + new project              │ For snapshot tests                            │
 │                                │                                               │
 │                                │   api on detached ✓                           │
 │                                │                                               │
@@ -141,7 +141,7 @@ exports[`Snapshots › project list with expanded repos | 1`] = String.raw`
 │                                                                                │
 │                                                                                │
 │                                                                                │
-│permissions  bypass    compact  off                                             │
+│permissions  bypass    compact  off    , settings                               │
 ╰────────────────────────────────────────────────────────────────────────────────╯
 `;
 

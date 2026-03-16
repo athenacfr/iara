@@ -21,6 +21,7 @@ func (s sessionItem) FilterValue() string { return s.entry.label }
 
 type sessionEntry struct {
 	label   string
+	relTime string
 	session *session.Session
 	kind    int // 0=new, 1=list sessions, 2=resume specific session
 }
@@ -35,10 +36,26 @@ type LauncherModel struct {
 	modes           []config.Mode
 	modeIndex       int
 	skipPermissions bool
+	sessionsDir     string
+	taskName        string
 	width, height   int
 }
 
-func NewLauncherModel(bypass bool, projectDir string) LauncherModel {
+func NewLauncherModel(bypass bool, sessionsDir string) LauncherModel {
+	return newLauncherModel(bypass, sessionsDir, "")
+}
+
+func NewLauncherModelWithDefault(bypass bool, sessionsDir string, defaultMode string) LauncherModel {
+	return newLauncherModel(bypass, sessionsDir, defaultMode)
+}
+
+func NewLauncherModelForTask(bypass bool, sessionsDir string, defaultMode string, taskName string) LauncherModel {
+	m := newLauncherModel(bypass, sessionsDir, defaultMode)
+	m.taskName = taskName
+	return m
+}
+
+func newLauncherModel(bypass bool, sessionsDir string, defaultMode string) LauncherModel {
 	entries := []sessionEntry{
 		{label: "+ New Session", kind: 0},
 		{label: "List sessions", kind: 1},
@@ -56,17 +73,28 @@ func NewLauncherModel(bypass bool, projectDir string) LauncherModel {
 		ListWidthPct: 0.5,
 	})
 
+	modeIdx := 0
+	if defaultMode != "" {
+		for i, m := range config.Modes {
+			if m.Name == defaultMode {
+				modeIdx = i
+				break
+			}
+		}
+	}
+
 	return LauncherModel{
 		fzfList:         fzf,
 		modes:           config.Modes,
-		modeIndex:       0,
+		modeIndex:       modeIdx,
 		skipPermissions: bypass,
+		sessionsDir:     sessionsDir,
 	}
 }
 
-func (m LauncherModel) LoadSessions(projectDir string) tea.Cmd {
+func (m LauncherModel) LoadSessions() tea.Cmd {
 	return func() tea.Msg {
-		sessions, err := session.List(projectDir)
+		sessions, err := session.List(m.sessionsDir)
 		return sessionsLoadedMsg{sessions: sessions, err: err}
 	}
 }
@@ -94,10 +122,15 @@ func (m LauncherModel) Update(msg tea.Msg) (LauncherModel, tea.Cmd) {
 		numberMap := sessionNumbers(msg.sessions)
 		for i := range msg.sessions {
 			s := msg.sessions[i]
-			num := numberMap[s.ID]
-			label := fmt.Sprintf("Session #%d  %s  %s", num,
-				session.RelativeTime(session.ParseTime(s.LastActive)), s.Summary)
-			entries = append(entries, sessionEntry{label: label, session: &s, kind: 2})
+			relTime := session.RelativeTime(session.ParseTime(s.LastActive))
+			var label string
+			if s.Summary != "" {
+				label = s.Summary
+			} else {
+				num := numberMap[s.ID]
+				label = fmt.Sprintf("Session #%d", num)
+			}
+			entries = append(entries, sessionEntry{label: label, relTime: relTime, session: &s, kind: 2})
 		}
 		items := make([]widget.FzfItem, len(entries))
 		for i, e := range entries {
@@ -145,7 +178,7 @@ func (m LauncherModel) Update(msg tea.Msg) (LauncherModel, tea.Cmd) {
 				}
 			case widget.FzfCancelMsg:
 				return m, func() tea.Msg {
-					return shared.NavigateMsg{Screen: shared.ScreenProjectExplorer}
+					return shared.NavigateMsg{Screen: shared.ScreenTaskSelect}
 				}
 			}
 		}
@@ -166,6 +199,11 @@ func sessionEntryID(entry sessionEntry) string {
 
 func (m LauncherModel) View() string {
 	var b strings.Builder
+
+	if m.taskName != "" {
+		b.WriteString(style.AccentStyle.Render("TASK: " + m.taskName))
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString(style.TitleStyle.Render("MODE"))
 	b.WriteString("\n")
@@ -211,7 +249,7 @@ func (m LauncherModel) View() string {
 	return b.String()
 }
 
-func renderSessionItem(item widget.FzfItem, index int, cursor, selected bool, matched []int, width int) string {
+func renderSessionItem(item widget.FzfItem, displayNum int, cursor, selected bool, matched []int, width int) string {
 	si := item.(sessionItem)
 
 	prefix := "  "
@@ -219,42 +257,33 @@ func renderSessionItem(item widget.FzfItem, index int, cursor, selected bool, ma
 		prefix = style.FzfCursorPrefix.Render("▶ ")
 	}
 
+	numStr := style.KeyStyle.Render(fmt.Sprintf("%d.", displayNum)) + " "
+
 	if si.entry.kind == 0 {
-		return prefix + style.TreeAddStyle.Render(si.entry.label)
+		return prefix + numStr + style.TreeAddStyle.Render(si.entry.label)
 	}
 
 	plain := si.entry.label
-	prefixWidth := 2
+	timeSuffix := "  " + style.DimStyle.Render(si.entry.relTime)
+	timePlainLen := 2 + len(si.entry.relTime)
+
+	numWidth := len(fmt.Sprintf("%d.", displayNum)) + 1
+	prefixWidth := 2 + numWidth
 	contentWidth := width - prefixWidth
 
-	if contentWidth <= 0 || len(plain) <= contentWidth {
-		return prefix + widget.HighlightMatches(plain, matched)
+	// Reserve space for the time suffix
+	labelWidth := contentWidth - timePlainLen
+	if labelWidth <= 0 || contentWidth <= 0 {
+		return prefix + numStr + widget.HighlightMatches(plain, matched) + timeSuffix
 	}
 
-	splitAt := contentWidth
-	if idx := strings.LastIndex(plain[:splitAt], " "); idx > splitAt/2 {
-		splitAt = idx + 1
+	if len(plain) <= labelWidth {
+		return prefix + numStr + widget.HighlightMatches(plain, matched) + timeSuffix
 	}
 
-	line1 := plain[:splitAt]
-	line2 := strings.TrimLeft(plain[splitAt:], " ")
-
-	var matched1, matched2 []int
-	for _, m := range matched {
-		if m < splitAt {
-			matched1 = append(matched1, m)
-		} else if m-splitAt < len(plain[splitAt:]) {
-			adj := m - splitAt + (len(plain[splitAt:]) - len(line2))
-			if adj >= 0 && adj < len(line2) {
-				matched2 = append(matched2, adj)
-			}
-		}
-	}
-
-	result := prefix + widget.HighlightMatches(line1, matched1)
-	indent := strings.Repeat(" ", prefixWidth)
-	wrapped := indent + widget.Truncate(widget.HighlightMatches(line2, matched2), contentWidth)
-	return result + "\n" + wrapped
+	// Truncate the label, then append time
+	truncated := widget.Truncate(widget.HighlightMatches(plain, matched), labelWidth)
+	return prefix + numStr + truncated + timeSuffix
 }
 
 // sessionNumbers assigns sequential numbers to sessions based on StartedAt order.

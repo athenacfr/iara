@@ -18,10 +18,10 @@ func TestInstallToDir(t *testing.T) {
 		"plugins/.claude-plugin/plugin.json",
 		"plugins/commands/help.md",
 		"plugins/commands/mode.md",
-		"plugins/commands/new-intention.md",
-		"modes/research.md",
-		"modes/review.md",
+		"plugins/commands/new-task.md",
 		"hooks/pre-write-guard.sh",
+		"agents/researcher.md",
+		"agents/reviewer.md",
 	}
 
 	for _, f := range expectedFiles {
@@ -49,9 +49,6 @@ func TestInstallSetsDir(t *testing.T) {
 	}
 	if got := PluginDir(); got != filepath.Join(tmp, "plugins") {
 		t.Errorf("PluginDir() = %q, want %q", got, filepath.Join(tmp, "plugins"))
-	}
-	if got := ModesDir(); got != filepath.Join(tmp, "modes") {
-		t.Errorf("ModesDir() = %q, want %q", got, filepath.Join(tmp, "modes"))
 	}
 	if got := HooksDir(); got != filepath.Join(tmp, "hooks") {
 		t.Errorf("HooksDir() = %q, want %q", got, filepath.Join(tmp, "hooks"))
@@ -131,21 +128,6 @@ func TestInstallCleansOldFiles(t *testing.T) {
 	}
 }
 
-func TestInstallCleansOldModes(t *testing.T) {
-	tmp := t.TempDir()
-
-	installToDir(tmp)
-
-	stale := filepath.Join(tmp, "modes", "stale-mode.md")
-	os.WriteFile(stale, []byte("old"), 0644)
-
-	installToDir(tmp)
-
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Error("stale mode file should be removed")
-	}
-}
-
 func TestInstallCleansOldHooks(t *testing.T) {
 	tmp := t.TempDir()
 
@@ -185,7 +167,7 @@ func TestGeneratedCommandPlugins(t *testing.T) {
 	}
 
 	// Prompt commands should have PluginBody content
-	promptGenerated := []string{"mode.md", "permissions.md", "help.md", "new-intention.md"}
+	promptGenerated := []string{"mode.md", "permissions.md", "help.md", "new-task.md", "finish-task.md", "setup-project.md"}
 	for _, name := range promptGenerated {
 		path := filepath.Join(commandsDir, name)
 		data, err := os.ReadFile(path)

@@ -368,11 +368,16 @@ You can add, modify, reorder, or remove tasks as you learn things. Add notes to 
 	})
 
 	Register(Command{
-		Name:        "new-intention",
-		Description: "Map the codebase, understand intent, create branches, and set up project context.",
-		PluginBody: `# New Intention
+		Name:        "new-task",
+		Description: "Create a new task: map codebase, understand intent, create worktree branches, and set up task context.",
+		PluginBody: `# New Task
 
-Set up a cw project by understanding what the user wants to work on, creating branches, and saving project context.
+Set up a new task by understanding what the user wants to work on, creating git worktrees with branches, and saving task context.
+
+## Environment
+
+- ` + "`CW_PROJECT_DIR`" + ` — the project root directory
+- ` + "`CW_TASK_ID`" + ` — the task ID (set after save-task)
 
 ## Process
 
@@ -395,7 +400,7 @@ This is the only question you ask unprompted. Wait for their answer.
 
 ### Step 3: Confirm the intention description
 
-Based on their answer and your codebase understanding, write a clear **description** (not a summary) of the work intention. This should describe what will be done, not summarize what was said.
+Based on their answer and your codebase understanding, write a clear **description** of the work intention. This should describe what will be done, not summarize what was said.
 
 Present the description and use the **AskUserQuestion** tool to confirm it's correct. If the user wants changes, adjust and confirm again.
 
@@ -409,55 +414,191 @@ git -C <subproject> branch -a --format='%(refname:short)' | head -30
 
 Common patterns: ` + "`feat/...`" + `, ` + "`feature/...`" + `, ` + "`fix/...`" + `, ` + "`chore/...`" + `, flat names like ` + "`add-auth`" + `. Match whatever the repo already uses. If no clear pattern, use ` + "`feat/<slug>`" + `.
 
-Present the branch plan as a numbered list with the last option always being to commit directly to the current branch (usually main):
-- **Single subproject**: "1. ` + "`<branch-name>`" + ` 2. Commit directly to ` + "`<current-branch>`" + `"
-- **Multiple subprojects**: "1. ` + "`<branch-1>`" + ` / ` + "`<branch-2>`" + ` 2. Commit directly to current branches"
+Present the branch name and use **AskUserQuestion** to confirm. All repos will use the same branch name.
 
-Use **AskUserQuestion** to confirm. If the user wants changes, adjust and confirm again.
+### Step 5: Save task and create worktrees
 
-### Step 5: Create branches
-
-If the user chose to commit directly to the current branch, skip branch creation entirely.
-
-Otherwise, for each subproject, create and checkout the branch:
+Build a JSON object and run this command using the Bash tool:
 
 ` + "```bash" + `
-git -C <subproject> checkout -b <branch-name>
+cw internal save-task '{"name":"<slug>","description":"<description>","branch":"<branch-name>"}'
 ` + "```" + `
 
-### Step 6: Save metadata
+This creates the task, sets up git worktrees for each repo, creates the task CLAUDE.md, and symlinks project rules.
 
-Build a JSON object with three fields and run this command using the Bash tool:
+### Step 6: Save project metadata (first task only)
+
+Check if project metadata already exists:
 
 ` + "```bash" + `
-cw internal save-metadata '<json-string>'
+cat "$CW_PROJECT_DIR/.cw/metadata.json" 2>/dev/null
 ` + "```" + `
 
-The JSON string should have these fields:
-- **title**: A short project title (derived from the subproject or user's description)
-- **description**: The confirmed intention description from Step 3
-- **instructions**: Technical context and conventions for this project — structure, tech stack, conventions, build/test commands, coding patterns. This will be injected as a system prompt in future sessions, so write it as direct instructions to Claude (e.g., "This project uses Go 1.24 with Bubble Tea for TUI..." not "The project uses..."). Include everything you learned from mapping the codebase.
+If the file doesn't exist or is empty, this is the first task. Build a JSON object with technical context and save it:
 
-Make sure to properly escape any quotes, newlines, or special characters in the JSON string. Use ` + "`\\n`" + ` for newlines within field values.
+` + "```bash" + `
+cw internal save-metadata '{"title":"<title>","description":"<description>","instructions":"<technical-context>"}'
+` + "```" + `
+
+The instructions field should contain: tech stack, build/test commands, conventions, coding patterns — everything you learned from mapping the codebase. Write it as direct instructions to Claude.
+
+If metadata already exists, skip this step.
 
 ### Step 7: Finish
 
-Check how this command was invoked by running:
+Check how this command was invoked:
 
 ` + "```bash" + `
 echo $CW_AUTO_SETUP
 ` + "```" + `
 
-- If the output is ` + "`1`" + ` (cw auto-invoked this during project setup): Say "All set! Starting fresh session..." then run ` + "`cw internal new-session`" + ` using the Bash tool.
-- Otherwise (user manually invoked this): Say "All set! Reloading session..." then run ` + "`cw internal reload`" + ` using the Bash tool.
+- If ` + "`1`" + `: Say "All set! Starting fresh session..." then run ` + "`cw internal new-session`" + `
+- Otherwise: Say "All set! Reloading session..." then run ` + "`cw internal reload`" + `
 
 ## Important
 
 - Derive everything technical from the subprojects. Only ask the user what they're working on.
-- Do NOT mention internal files (metadata.json) to the user.
-- Do NOT write .claude/CLAUDE.md — everything goes into metadata.
-- Do NOT create any files — metadata is saved via the CLI command.
-- Keep instructions concise but complete — they replace CLAUDE.md as the project context.`,
+- Do NOT mention internal files (task.json, metadata.json) to the user.
+- Do NOT create any files directly — use the CLI commands.
+- All repos share the same branch name for a task.
+- Worktrees are created by the save-task command — do NOT run git worktree commands yourself.`,
+	})
+
+	Register(Command{
+		Name:        "finish-task",
+		Description: "Complete the current task: verify clean state, remove worktrees, and return to task selection.",
+		PluginBody: `# Finish Task
+
+Complete the current task by cleaning up worktrees and marking it as done.
+
+## Environment
+
+- ` + "`CW_PROJECT_DIR`" + ` — the project root directory
+- ` + "`CW_TASK_ID`" + ` — the current task ID
+- ` + "`CW_TASK_NAME`" + ` — the current task name
+
+## Process
+
+### Step 1: Check for uncommitted changes
+
+Check all repos in the worktree for dirty state:
+
+` + "```bash" + `
+for dir in "$CW_PROJECT_DIR"/.worktrees/"$CW_TASK_NAME"/*/; do
+  if [ -d "$dir/.git" ] || [ -f "$dir/.git" ]; then
+    echo "=== $(basename "$dir") ==="
+    git -C "$dir" status --porcelain
+  fi
+done
+` + "```" + `
+
+If any repo has uncommitted changes, warn the user and ask if they want to:
+1. Commit the changes first
+2. Discard changes and proceed
+3. Cancel
+
+### Step 2: Confirm
+
+Use **AskUserQuestion**: "Ready to finish task '<task-name>'? The branch will be preserved but the worktree will be removed."
+
+### Step 3: Finish the task
+
+` + "```bash" + `
+cw internal finish-task
+` + "```" + `
+
+This removes the worktrees and marks the task as completed.
+
+### Step 4: Return to task selection
+
+` + "```bash" + `
+cw internal reload
+` + "```" + `
+
+## Important
+
+- Always check for uncommitted changes before finishing.
+- The git branch is preserved in the original repos — only the worktree working copy is removed.
+- The user can push/merge the branch via normal git/gh workflow before or after finishing.`,
+	})
+
+	Register(Command{
+		Name:        "setup-project",
+		Description: "Map the codebase and save project metadata for a new cw project.",
+		PluginBody: `# Setup Project
+
+Set up project metadata by mapping the codebase. This runs automatically on the first launch of a new project.
+
+## Process
+
+### Step 1: Map the codebase
+
+Explore all subprojects in the project directory autonomously — do NOT ask the user about tech stack or structure:
+
+- List top-level files and directories in each subproject
+- Read package.json, go.mod, Cargo.toml, pyproject.toml, requirements.txt, Makefile, docker-compose.yml, or whatever dependency/config files exist
+- Scan a few key source files to understand patterns (naming, formatting, test structure)
+- Check for existing linter configs (.eslintrc, .prettierrc, .golangci.yml, etc.)
+- Check for CI configs (.github/workflows/, .gitlab-ci.yml, etc.)
+- Look at git log for commit message style
+
+### Step 2: Ask what the project is about
+
+Ask: **"What is this project?"**
+
+Wait for their answer.
+
+### Step 3: Save metadata
+
+Build a JSON object and run:
+
+` + "```bash" + `
+cw internal save-metadata '{"title":"<title>","description":"<description>","instructions":"<technical-context>"}'
+` + "```" + `
+
+Fields:
+- **title**: Short project title
+- **description**: What the project is about
+- **instructions**: Technical context — structure, tech stack, conventions, build/test commands, coding patterns. Write as direct instructions to Claude.
+
+### Step 4: Finish
+
+Check:
+
+` + "```bash" + `
+echo $CW_AUTO_SETUP
+` + "```" + `
+
+- If ` + "`1`" + `: Say "Project set up! Starting fresh session..." then run ` + "`cw internal new-session`" + `
+- Otherwise: Say "Project set up! Reloading..." then run ` + "`cw internal reload`" + `
+
+## Important
+
+- Derive everything technical from the subprojects. Only ask what the project is about.
+- Do NOT mention internal files to the user.
+- Do NOT create any files directly — use the CLI command.
+- Keep instructions concise but complete.`,
+	})
+
+	Register(Command{
+		Name:        "save-task",
+		Description: "Save task metadata and create worktrees for a new task.",
+		CLICommand:  "save-task",
+		Internal:    true,
+		Params: map[string]ParamDef{
+			"json": {
+				Type:        "string",
+				Description: `JSON string with fields: name, description, branch. Example: {"name":"add-auth","description":"...","branch":"feat/add-auth"}`,
+				Required:    true,
+			},
+		},
+	})
+
+	Register(Command{
+		Name:        "complete-task",
+		Description: "Mark task as completed and remove its worktrees.",
+		CLICommand:  "finish-task",
+		Internal:    true,
 	})
 
 	Register(Command{
@@ -473,7 +614,7 @@ The argument is: ` + "`$ARGUMENTS`" + `
 
 ## Config File
 
-Dev commands are persisted at ` + "`$CW_PROJECT_DIR/.cw/dev-config.json`" + `:
+Dev commands are persisted at ` + "`$CW_TASK_DIR/dev-config.json`" + `:
 
 ` + "```json" + `
 {
@@ -566,7 +707,7 @@ Each cw project gets a deterministic port range to avoid conflicts when multiple
 
 #### If config exists — launch
 
-1. Read ` + "`$CW_PROJECT_DIR/.cw/dev-config.json`" + `
+1. Read ` + "`$CW_TASK_DIR/dev-config.json`" + `
 2. **Port conflict check**: For each subproject with a ` + "`port`" + ` field, check if that port is already in use:
    ` + "```bash" + `
    lsof -i :<port> -sTCP:LISTEN -t 2>/dev/null
@@ -576,21 +717,21 @@ Each cw project gets a deterministic port range to avoid conflicts when multiple
 5. For each subproject, run one-shot commands first (sequentially, wait for each to complete). **Redirect output to log files**:
    - If the subproject has a ` + "`venv`" + ` field:
      ` + "```bash" + `
-     cd <project-dir>/<subproject-path> && source <venv>/bin/activate && <one-shot-cmd> >> "$CW_PROJECT_DIR/.cw/logs/<subproject>.log" 2>&1
+     cd <project-dir>/<subproject-path> && source <venv>/bin/activate && <one-shot-cmd> >> "$CW_TASK_DIR/logs/<subproject>.log" 2>&1
      ` + "```" + `
    - Otherwise:
      ` + "```bash" + `
-     cd <project-dir>/<subproject-path> && <one-shot-cmd> >> "$CW_PROJECT_DIR/.cw/logs/<subproject>.log" 2>&1
+     cd <project-dir>/<subproject-path> && <one-shot-cmd> >> "$CW_TASK_DIR/logs/<subproject>.log" 2>&1
      ` + "```" + `
    If a one-shot command fails (non-zero exit), read the last 20 lines of its log file to show the error, then ask if the user wants to continue or abort.
 6. Then launch all long-running commands in parallel using ` + "`run_in_background: true`" + `. **Redirect all output to log files** so it doesn't accumulate in Claude's memory:
    - If the subproject has a ` + "`venv`" + ` field:
      ` + "```bash" + `
-     cd <project-dir>/<subproject-path> && source <venv>/bin/activate && <long-running-cmd> >> "$CW_PROJECT_DIR/.cw/logs/<subproject>.log" 2>&1
+     cd <project-dir>/<subproject-path> && source <venv>/bin/activate && <long-running-cmd> >> "$CW_TASK_DIR/logs/<subproject>.log" 2>&1
      ` + "```" + `
    - Otherwise:
      ` + "```bash" + `
-     cd <project-dir>/<subproject-path> && <long-running-cmd> >> "$CW_PROJECT_DIR/.cw/logs/<subproject>.log" 2>&1
+     cd <project-dir>/<subproject-path> && <long-running-cmd> >> "$CW_TASK_DIR/logs/<subproject>.log" 2>&1
      ` + "```" + `
 7. Display a summary table:
    ` + "```" + `
@@ -602,9 +743,15 @@ Each cw project gets a deterministic port range to avoid conflicts when multiple
    backend      uvicorn main:app     long-running  :8000  ✓ background (venv)
    backend      alembic upgrade head one-shot       —     ✓ completed (venv)
 
+   URLs:
+     frontend  → http://localhost:5173
+     backend   → http://localhost:8000
+
    Logs: .cw/logs/frontend.log, .cw/logs/backend.log
    Use /dev logs to view output, /dev status to check health.
    ` + "```" + `
+
+8. After displaying the table, show a **URLs section** listing each subproject that has a port with its URL as ` + "`http://localhost:<port>`" + `. Only include subprojects with long-running commands that have a port assigned.
 
 #### If NO config exists — discover and confirm
 
@@ -638,7 +785,7 @@ Each cw project gets a deterministic port range to avoid conflicts when multiple
    - Change ports or venv paths
    - Skip a subproject
    ` + "```" + `
-5. If user confirms, write the config to ` + "`$CW_PROJECT_DIR/.cw/dev-config.json`" + ` and launch (go to "If config exists" flow)
+5. If user confirms, write the config to ` + "`$CW_TASK_DIR/dev-config.json`" + ` and launch (go to "If config exists" flow)
 6. If user wants changes, adjust and confirm again
 
 ### /dev stop
@@ -656,7 +803,7 @@ Each cw project gets a deterministic port range to avoid conflicts when multiple
 
 Re-discover and merge changes into the existing config without losing manual edits.
 
-1. Read the existing config from ` + "`$CW_PROJECT_DIR/.cw/dev-config.json`" + `
+1. Read the existing config from ` + "`$CW_TASK_DIR/dev-config.json`" + `
 2. Run the full discovery process (same as "If NO config exists" above)
 3. Diff the discovered config against the existing config and present changes using **AskUserQuestion**:
    ` + "```" + `
@@ -685,7 +832,7 @@ Re-discover and merge changes into the existing config without losing manual edi
    - Manual edits to commands, descriptions, and types
    - Custom ` + "`venv`" + ` paths and ` + "`port`" + ` assignments
    - The existing ` + "`portBase`" + ` (assign new subprojects the next available port in sequence)
-5. Write updated config to ` + "`$CW_PROJECT_DIR/.cw/dev-config.json`" + `
+5. Write updated config to ` + "`$CW_TASK_DIR/dev-config.json`" + `
 6. If dev commands are currently running, ask: "Restart with updated config?"
 
 ### /dev status
@@ -702,7 +849,7 @@ Re-discover and merge changes into the existing config without losing manual edi
    ` + "```" + `
 3. For any failed or errored tasks, show the **last 10 lines** of the log file (not full output):
    ` + "```bash" + `
-   tail -n 10 "$CW_PROJECT_DIR/.cw/logs/<subproject>.log"
+   tail -n 10 "$CW_TASK_DIR/logs/<subproject>.log"
    ` + "```" + `
 4. Ask if the user wants to restart failed commands
 5. Mention: "Use ` + "`/dev logs <subproject>`" + ` for more output."
@@ -716,7 +863,7 @@ Read dev server logs in controlled chunks to minimize token usage.
 3. If lines specified, override the default (e.g. ` + "`/dev logs backend 200`" + `)
 4. Read logs using:
    ` + "```bash" + `
-   tail -n <lines> "$CW_PROJECT_DIR/.cw/logs/<subproject>.log"
+   tail -n <lines> "$CW_TASK_DIR/logs/<subproject>.log"
    ` + "```" + `
 Note: Log file size is managed automatically by cw (truncated to last 5000 lines if exceeding 10MB). No need to handle this in the LLM.
 
@@ -738,6 +885,6 @@ Note: Log file size is managed automatically by cw (truncated to last 5000 lines
 - **Python venv**: During discovery, check for ` + "`.venv/`" + ` or ` + "`venv/`" + ` directories. If found, set the ` + "`venv`" + ` field in config. Always activate the venv before running any Python subproject command — without it, commands will use the system Python and fail to find project dependencies.
 - **Port awareness**: During discovery, infer default ports from config files and command flags (e.g. ` + "`--port 8000`" + `, Vite's default 5173, Django's default 8000). Store in the ` + "`port`" + ` field. Before launching, check for port conflicts — if multiple cw sessions or external processes occupy a port, choose an alternative and update env override files so cross-service references stay correct.
 - **Env override sync**: When a port changes, scan ` + "`$CW_PROJECT_DIR/.env.<repo>.override`" + ` files for URL or port variables referencing the old port and update them. This ensures that e.g. a frontend's ` + "`VITE_API_URL`" + ` points to the backend's actual running port.
-- **Log management**: All dev process output goes to ` + "`$CW_PROJECT_DIR/.cw/logs/<subproject>.log`" + `. NEVER use TaskOutput to read full process output — always read log files with ` + "`tail`" + ` to control token usage. Log cleanup (deletion on session end, truncation of oversized files) is handled automatically by cw — do NOT run cleanup commands yourself.`,
+- **Log management**: All dev process output goes to ` + "`$CW_TASK_DIR/logs/<subproject>.log`" + `. NEVER use TaskOutput to read full process output — always read log files with ` + "`tail`" + ` to control token usage. Log cleanup (deletion on session end, truncation of oversized files) is handled automatically by cw — do NOT run cleanup commands yourself.`,
 	})
 }

@@ -5,7 +5,7 @@ import (
 )
 
 func TestInitModes(t *testing.T) {
-	InitModes("/tmp/modes")
+	InitModes()
 
 	if len(Modes) == 0 {
 		t.Fatal("expected modes to be initialized")
@@ -26,7 +26,7 @@ func TestInitModes(t *testing.T) {
 }
 
 func TestGetModeFound(t *testing.T) {
-	InitModes("/tmp/modes")
+	InitModes()
 
 	m, ok := GetMode("code")
 	if !ok {
@@ -38,7 +38,7 @@ func TestGetModeFound(t *testing.T) {
 }
 
 func TestGetModeNotFound(t *testing.T) {
-	InitModes("/tmp/modes")
+	InitModes()
 
 	_, ok := GetMode("nonexistent")
 	if ok {
@@ -47,7 +47,7 @@ func TestGetModeNotFound(t *testing.T) {
 }
 
 func TestGetModeEmptyName(t *testing.T) {
-	InitModes("/tmp/modes")
+	InitModes()
 
 	_, ok := GetMode("")
 	if ok {
@@ -55,53 +55,59 @@ func TestGetModeEmptyName(t *testing.T) {
 	}
 }
 
-func TestGetModeResearchHasPromptFile(t *testing.T) {
-	InitModes("/tmp/modes")
+func TestGetModeResearchHasAgent(t *testing.T) {
+	InitModes()
 
 	m, ok := GetMode("research")
 	if !ok {
 		t.Fatal("expected to find 'research' mode")
 	}
-	if m.Flag != "--append-system-prompt-file" {
-		t.Errorf("Flag = %q, want %q", m.Flag, "--append-system-prompt-file")
-	}
-	if m.Value == "" {
-		t.Error("expected Value to be set for research mode")
+	if m.Agent != "researcher" {
+		t.Errorf("Agent = %q, want %q", m.Agent, "researcher")
 	}
 }
 
-func TestGetModeCodeHasNoPromptFile(t *testing.T) {
-	InitModes("/tmp/modes")
+func TestGetModeReviewHasAgent(t *testing.T) {
+	InitModes()
+
+	m, ok := GetMode("review")
+	if !ok {
+		t.Fatal("expected to find 'review' mode")
+	}
+	if m.Agent != "reviewer" {
+		t.Errorf("Agent = %q, want %q", m.Agent, "reviewer")
+	}
+}
+
+func TestGetModeCodeHasNoAgent(t *testing.T) {
+	InitModes()
 
 	m, ok := GetMode("code")
 	if !ok {
 		t.Fatal("expected to find 'code' mode")
 	}
-	if m.Flag != "" {
-		t.Errorf("code mode should have no Flag, got %q", m.Flag)
-	}
-	if m.Value != "" {
-		t.Errorf("code mode should have no Value, got %q", m.Value)
+	if m.Agent != "" {
+		t.Errorf("code mode should have no Agent, got %q", m.Agent)
 	}
 }
 
-func TestGetModeNoneHasNoPromptFile(t *testing.T) {
-	InitModes("/tmp/modes")
+func TestGetModeNoneHasNoAgent(t *testing.T) {
+	InitModes()
 
 	m, ok := GetMode("none")
 	if !ok {
 		t.Fatal("expected to find 'none' mode")
 	}
-	if m.Flag != "" || m.Value != "" {
-		t.Error("none mode should have no Flag or Value")
+	if m.Agent != "" {
+		t.Errorf("none mode should have no Agent, got %q", m.Agent)
 	}
 }
 
 func TestInitModesOverwritesPrevious(t *testing.T) {
-	InitModes("/path/a")
+	InitModes()
 	first := len(Modes)
 
-	InitModes("/path/b")
+	InitModes()
 	second := len(Modes)
 
 	if first != second {

@@ -6,24 +6,25 @@ import (
 )
 
 const (
-	logDir     = ".cw/logs"
+	logDirName = "logs"
 	maxLogSize = 10 * 1024 * 1024 // 10MB
 	tailLines  = 5000
 )
 
-// Dir returns the log directory for a project.
-func Dir(projectDir string) string {
-	return filepath.Join(projectDir, logDir)
+// Dir returns the log directory for a given base directory.
+// The base is typically a task dir (.cw/tasks/<id>/) or project dir (.cw/).
+func Dir(baseDir string) string {
+	return filepath.Join(baseDir, logDirName)
 }
 
 // EnsureDir creates the log directory if it doesn't exist.
-func EnsureDir(projectDir string) error {
-	return os.MkdirAll(Dir(projectDir), 0755)
+func EnsureDir(baseDir string) error {
+	return os.MkdirAll(Dir(baseDir), 0755)
 }
 
-// Cleanup removes all log files in the project's log directory.
-func Cleanup(projectDir string) error {
-	dir := Dir(projectDir)
+// Cleanup removes all log files in the log directory.
+func Cleanup(baseDir string) error {
+	dir := Dir(baseDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -42,8 +43,8 @@ func Cleanup(projectDir string) error {
 
 // TruncateOversized checks each log file and truncates any that exceed maxLogSize
 // by keeping only the last tailLines lines.
-func TruncateOversized(projectDir string) error {
-	dir := Dir(projectDir)
+func TruncateOversized(baseDir string) error {
+	dir := Dir(baseDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

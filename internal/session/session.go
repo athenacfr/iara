@@ -2,12 +2,16 @@ package session
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -27,14 +31,9 @@ type Session struct {
 	Status          string `json:"status"` // "active" or "completed"
 }
 
-// sessionsDir returns the .cw/sessions/ directory for a project.
-func sessionsDir(projectDir string) string {
-	return filepath.Join(projectDir, ".cw", "sessions")
-}
-
-// sessionPath returns the file path for a session.
-func sessionPath(projectDir, id string) string {
-	return filepath.Join(sessionsDir(projectDir), id+".json")
+// sessionPath returns the file path for a session within the given sessions directory.
+func sessionPath(sessionsDir, id string) string {
+	return filepath.Join(sessionsDir, id+".json")
 }
 
 // New creates a new session with the given parameters.
@@ -50,10 +49,9 @@ func New(id, mode string, skipPerms bool) *Session {
 	}
 }
 
-// Save writes the session to <projectDir>/.cw/sessions/<id>.json.
-func (s *Session) Save(projectDir string) error {
-	dir := sessionsDir(projectDir)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+// Save writes the session to <sessionsDir>/<id>.json.
+func (s *Session) Save(sessionsDir string) error {
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
 		return fmt.Errorf("create sessions dir: %w", err)
 	}
 
@@ -62,12 +60,12 @@ func (s *Session) Save(projectDir string) error {
 		return fmt.Errorf("marshal session: %w", err)
 	}
 
-	return os.WriteFile(sessionPath(projectDir, s.ID), data, 0644)
+	return os.WriteFile(sessionPath(sessionsDir, s.ID), data, 0644)
 }
 
 // Load reads a session from disk.
-func Load(projectDir, id string) (*Session, error) {
-	data, err := os.ReadFile(sessionPath(projectDir, id))
+func Load(sessionsDir, id string) (*Session, error) {
+	data, err := os.ReadFile(sessionPath(sessionsDir, id))
 	if err != nil {
 		return nil, err
 	}
@@ -79,10 +77,9 @@ func Load(projectDir, id string) (*Session, error) {
 	return &s, nil
 }
 
-// List returns all sessions for a project, sorted by last_active descending.
-func List(projectDir string) ([]Session, error) {
-	dir := sessionsDir(projectDir)
-	files, err := os.ReadDir(dir)
+// List returns all sessions in the given sessions directory, sorted by last_active descending.
+func List(sessionsDir string) ([]Session, error) {
+	files, err := os.ReadDir(sessionsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -97,7 +94,7 @@ func List(projectDir string) ([]Session, error) {
 		}
 
 		id := strings.TrimSuffix(f.Name(), ".json")
-		s, err := Load(projectDir, id)
+		s, err := Load(sessionsDir, id)
 		if err != nil {
 			continue
 		}
@@ -112,19 +109,19 @@ func List(projectDir string) ([]Session, error) {
 }
 
 // Touch updates the session's LastActive timestamp and saves.
-func (s *Session) Touch(projectDir string) error {
+func (s *Session) Touch(sessionsDir string) error {
 	s.LastActive = time.Now().UTC().Format(time.RFC3339)
-	return s.Save(projectDir)
+	return s.Save(sessionsDir)
 }
 
 // Delete removes a session file.
-func Delete(projectDir, id string) error {
-	return os.Remove(sessionPath(projectDir, id))
+func Delete(sessionsDir, id string) error {
+	return os.Remove(sessionPath(sessionsDir, id))
 }
 
 // ProjectSessionsDir returns the .cw/sessions/ path for a project name.
 func ProjectSessionsDir(name string) string {
-	return sessionsDir(filepath.Join(paths.ProjectsDir(), name))
+	return filepath.Join(paths.ProjectsDir(), name, ".cw", "sessions")
 }
 
 // RelativeTime returns a human-readable relative time string.
@@ -175,10 +172,102 @@ func ParseTime(s string) time.Time {
 	return t
 }
 
-// ExtractSummary reads the Claude JSONL file for a session and extracts
-// the first user message as a summary. workDir is the directory Claude
-// was launched in (used to locate the JSONL file).
-func ExtractSummary(sessionID, workDir string) string {
+// GenerateSummary uses Claude to generate a short title for a session
+// based on the conversation content. Returns "" if generation fails
+// (the TUI falls back to "Session #N").
+func GenerateSummary(sessionID, workDir string) string {
+	excerpt := extractConversationExcerpt(sessionID, workDir)
+	if excerpt == "" {
+		return ""
+	}
+
+	prompt := "Summarize this coding session in under 10 words. Output ONLY the title, nothing else. No quotes, no punctuation at the end.\n\n<conversation>\n" + excerpt + "</conversation>"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "claude", "-p", "--", prompt)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = nil
+
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+
+	title := strings.TrimSpace(stdout.String())
+
+	// Sanity check: reject empty or absurdly long output
+	if title == "" || utf8.RuneCountInString(title) > 120 {
+		return ""
+	}
+
+	return title
+}
+
+// GenerateSummaryAsync spawns a detached background process to generate the
+// session summary. The process survives terminal close and CLI interruption
+// by using its own process group and redirecting stdio to /dev/null.
+// Use this when no spinner or in-process coordination is needed.
+func GenerateSummaryAsync(sessionID, workDir, sessionsDir string) {
+	cwBin, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	cmd := exec.Command(cwBin, "internal", "summarize", sessionID, workDir, sessionsDir)
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true, // new session — survives terminal close
+	}
+	cmd.Start() // fire and forget
+}
+
+// GenerateSummaryBackground runs summary generation in-process on a goroutine
+// and saves the result. Returns a channel that is closed when done, so callers
+// can coordinate (e.g. keep a spinner alive until both compact and summary finish).
+func GenerateSummaryBackground(sessionID, workDir, sessionsDir string) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runSummarize(sessionID, workDir, sessionsDir)
+	}()
+	return done
+}
+
+// RunSummarize is the handler for "cw internal summarize". It generates
+// a summary for the given session and saves it to disk.
+func RunSummarize(sessionID, workDir, sessionsDir string) {
+	runSummarize(sessionID, workDir, sessionsDir)
+}
+
+func runSummarize(sessionID, workDir, sessionsDir string) {
+	s, err := Load(sessionsDir, sessionID)
+	if err != nil || s.Summary != "" {
+		return
+	}
+
+	summary := GenerateSummary(sessionID, workDir)
+	if summary == "" {
+		return
+	}
+
+	// Re-load to avoid clobbering concurrent writes
+	s, err = Load(sessionsDir, sessionID)
+	if err != nil {
+		return
+	}
+	if s.Summary == "" {
+		s.Summary = summary
+		s.Save(sessionsDir)
+	}
+}
+
+// extractConversationExcerpt reads the Claude JSONL file and builds a
+// compact transcript of the first few user+assistant exchanges.
+func extractConversationExcerpt(sessionID, workDir string) string {
 	jsonlPath := claudeJSONLPath(sessionID, workDir)
 	if jsonlPath == "" {
 		return ""
@@ -193,7 +282,17 @@ func ExtractSummary(sessionID, workDir string) string {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 256*1024), 256*1024)
 
+	const maxPairs = 5
+	const maxMsgRunes = 200
+
+	var parts []string
+	userCount := 0
+
 	for scanner.Scan() {
+		if userCount >= maxPairs {
+			break
+		}
+
 		line := scanner.Bytes()
 
 		var rec struct {
@@ -207,7 +306,12 @@ func ExtractSummary(sessionID, workDir string) string {
 			continue
 		}
 
-		if rec.Type != "user" || rec.Message.Role != "user" {
+		role := rec.Message.Role
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		// Only count records with matching type field
+		if rec.Type != role {
 			continue
 		}
 
@@ -219,16 +323,21 @@ func ExtractSummary(sessionID, workDir string) string {
 			continue
 		}
 
-		// Truncate to a reasonable length
-		if utf8.RuneCountInString(text) > 120 {
+		// Truncate long messages
+		if utf8.RuneCountInString(text) > maxMsgRunes {
 			runes := []rune(text)
-			text = string(runes[:120])
+			text = string(runes[:maxMsgRunes]) + "..."
 		}
 
-		return text
+		if role == "user" {
+			parts = append(parts, "User: "+text)
+			userCount++
+		} else {
+			parts = append(parts, "Assistant: "+text)
+		}
 	}
 
-	return ""
+	return strings.Join(parts, "\n")
 }
 
 // claudeJSONLPath returns the path to Claude's JSONL file for a session.

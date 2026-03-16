@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"encoding/json"
+
 	"github.com/ahtwr/cw/internal/claude"
 	"github.com/ahtwr/cw/internal/config"
 	"github.com/ahtwr/cw/internal/devlog"
@@ -22,6 +24,7 @@ import (
 	"github.com/ahtwr/cw/internal/paths"
 	"github.com/ahtwr/cw/internal/project"
 	"github.com/ahtwr/cw/internal/session"
+	"github.com/ahtwr/cw/internal/task"
 	"github.com/ahtwr/cw/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -124,7 +127,7 @@ func internalAutoCompact() {
 }
 
 func internalModeSwitch(modeName string) {
-	config.InitModes(cwembed.ModesDir())
+	config.InitModes()
 	if _, ok := config.GetMode(modeName); !ok {
 		fmt.Fprintf(os.Stderr, "unknown mode: %s\n", modeName)
 		os.Exit(1)
@@ -220,6 +223,90 @@ func internalYoloStop() {
 	fmt.Println("Yolo mode deactivated")
 }
 
+func internalSaveTask(jsonStr string) {
+	projectDir := os.Getenv("CW_PROJECT_DIR")
+	if projectDir == "" {
+		fmt.Fprintln(os.Stderr, "CW_PROJECT_DIR not set — not running inside cw")
+		os.Exit(1)
+	}
+
+	var input struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Branch      string `json:"branch"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &input); err != nil {
+		fmt.Fprintf(os.Stderr, "save-task: invalid JSON: %v\n", err)
+		os.Exit(1)
+	}
+	if input.Name == "" || input.Branch == "" {
+		fmt.Fprintln(os.Stderr, "save-task: name and branch are required")
+		os.Exit(1)
+	}
+
+	t := task.New(input.Name, input.Description, input.Branch)
+	if err := task.Save(projectDir, t); err != nil {
+		fmt.Fprintf(os.Stderr, "save-task: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Discover repos in the project
+	p, err := project.Get(filepath.Base(projectDir))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "save-task: cannot get project: %v\n", err)
+		os.Exit(1)
+	}
+	var repoNames []string
+	for _, r := range p.Repos {
+		repoNames = append(repoNames, r.Name)
+	}
+
+	if err := task.SetupWorktree(projectDir, t, repoNames); err != nil {
+		fmt.Fprintf(os.Stderr, "save-task: worktree setup failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Task '%s' created (branch: %s)\n", t.Name, t.Branch)
+}
+
+func internalFinishTask() {
+	projectDir := os.Getenv("CW_PROJECT_DIR")
+	taskID := os.Getenv("CW_TASK_ID")
+	if projectDir == "" || taskID == "" {
+		fmt.Fprintln(os.Stderr, "CW_PROJECT_DIR and CW_TASK_ID must be set")
+		os.Exit(1)
+	}
+
+	t, err := task.Load(projectDir, taskID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "finish-task: cannot load task: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Discover repos in the project
+	p, err := project.Get(filepath.Base(projectDir))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "finish-task: cannot get project: %v\n", err)
+		os.Exit(1)
+	}
+	var repoNames []string
+	for _, r := range p.Repos {
+		repoNames = append(repoNames, r.Name)
+	}
+
+	if err := task.RemoveWorktree(projectDir, t, repoNames); err != nil {
+		fmt.Fprintf(os.Stderr, "finish-task: worktree removal failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := task.SetStatus(projectDir, taskID, "completed"); err != nil {
+		fmt.Fprintf(os.Stderr, "finish-task: cannot update status: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Task '%s' completed\n", t.Name)
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "uninstall" {
 		uninstall()
@@ -252,6 +339,13 @@ func main() {
 			}
 			internalPermissionsSwitch(os.Args[3])
 			return
+		case "summarize":
+			if len(os.Args) < 6 {
+				fmt.Fprintln(os.Stderr, "usage: cw internal summarize <sessionID> <workDir> <projectDir>")
+				os.Exit(1)
+			}
+			session.RunSummarize(os.Args[3], os.Args[4], os.Args[5])
+			return
 		case "open-project":
 			dir := os.Getenv("CW_PROJECT_DIR")
 			if dir == "" {
@@ -274,6 +368,16 @@ func main() {
 		case "yolo-stop":
 			internalYoloStop()
 			return
+		case "save-task":
+			if len(os.Args) < 4 {
+				fmt.Fprintln(os.Stderr, "usage: cw internal save-task '<json>'")
+				os.Exit(1)
+			}
+			internalSaveTask(os.Args[3])
+			return
+		case "finish-task":
+			internalFinishTask()
+			return
 		}
 	}
 
@@ -283,7 +387,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	config.InitModes(cwembed.ModesDir())
+	config.InitModes()
 
 	if err := paths.EnsureProjectsDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating projects dir: %v\n", err)
@@ -322,12 +426,18 @@ func main() {
 			continue
 		}
 
+		// Resolve sessions directory — task-scoped if available, fallback to project-level
+		sessionsDir := cfg.SessionsDir
+		if sessionsDir == "" {
+			sessionsDir = filepath.Join(cfg.WorkDir, ".cw", "sessions")
+		}
+
 		// Create or load the CW session for this launch
 		var cwSession *session.Session
 		var isNewSession bool
 		if cfg.ResumeSessionID != "" {
 			// Resuming a specific session — load it and restore state
-			if s, err := session.Load(cfg.WorkDir, cfg.ResumeSessionID); err == nil {
+			if s, err := session.Load(sessionsDir, cfg.ResumeSessionID); err == nil {
 				cwSession = s
 				// Restore mode from session
 				if m, ok := config.GetMode(s.Mode); ok {
@@ -346,11 +456,19 @@ func main() {
 				cfg.Mode.Name,
 				cfg.SkipPermissions,
 			)
-			cwSession.Save(cfg.WorkDir)
+			cwSession.Save(sessionsDir)
 		}
+
+		// Channel closed when background summary generation completes.
+		// Used to keep the compact spinner alive until both finish.
+		var summaryDone <-chan struct{}
 
 		// Reload loop: re-sync and re-launch on reload signal
 		for {
+			// Load global settings for this launch iteration
+			globalSettings := project.LoadGlobalSettings()
+			cfg.LoadSubprojectRules = globalSettings.LoadSubprojectRules
+
 			var envWatcher *env.Watcher
 			if cfg.ProjectName != "" {
 				sysPrompt, err := project.BuildSystemPrompt(cfg.ProjectName)
@@ -364,34 +482,71 @@ func main() {
 				}
 
 				// Add each repo as --add-dir so Claude loads their rules and CLAUDE.md
-				if p, err := project.Get(cfg.ProjectName); err == nil {
-					cfg.AddDirs = nil
+				// When in a task worktree, use worktree repo paths instead of main repos
+				cfg.AddDirs = nil
+				if cfg.TaskID != "" {
+					// Worktree mode: discover repos in worktree base
+					if entries, err := os.ReadDir(cfg.WorkDir); err == nil {
+						for _, e := range entries {
+							if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+								repoPath := filepath.Join(cfg.WorkDir, e.Name())
+								if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
+									cfg.AddDirs = append(cfg.AddDirs, repoPath)
+								}
+							}
+						}
+					}
+				} else if p, err := project.Get(cfg.ProjectName); err == nil {
 					for _, r := range p.Repos {
 						cfg.AddDirs = append(cfg.AddDirs, r.Path)
 					}
 				}
 
-				project.EnsureHooks(cfg.ProjectName, cwembed.Dir())
+				if globalSettings.EnableHooks {
+					project.EnsureHooks(cfg.ProjectName, cwembed.Dir())
+				}
 				project.EnsureAgents(cfg.ProjectName, cwembed.Dir())
 				project.SyncCommands(cfg.ProjectName)
 
 				// Sync env files: merge .env.<repo>.global + .env.<repo>.override → repo/.env
-				// Then watch for changes and auto-regenerate while Claude runs.
+				// When in a task worktree, sync to the worktree base (cfg.WorkDir).
+				// Otherwise, sync to the project root.
+				envSyncDir := cfg.WorkDir
 				if p, err := project.Get(cfg.ProjectName); err == nil {
 					var repoNames []string
-					for _, r := range p.Repos {
-						repoNames = append(repoNames, r.Name)
+					// Discover repos from the actual WorkDir (worktree or project root)
+					if entries, err := os.ReadDir(envSyncDir); err == nil {
+						for _, e := range entries {
+							if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+								repoPath := filepath.Join(envSyncDir, e.Name())
+								if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
+									repoNames = append(repoNames, e.Name())
+								}
+							}
+						}
 					}
-					env.Sync(p.Path, repoNames)
-					if w, err := env.Watch(p.Path, repoNames); err == nil {
+					if len(repoNames) == 0 {
+						// Fallback to project repos
+						for _, r := range p.Repos {
+							repoNames = append(repoNames, r.Name)
+						}
+						envSyncDir = p.Path
+					}
+					env.Sync(envSyncDir, repoNames)
+					if w, err := env.Watch(envSyncDir, repoNames); err == nil {
 						envWatcher = w
 					}
 				}
 			}
 
+			// Task-scoped base dir for dev logs and config.
+			// sessionsDir is .cw/tasks/<id>/sessions/ — parent is the task dir.
+			// For non-task (legacy fallback), sessionsDir is .cw/sessions/ — parent is .cw/
+			taskBaseDir := filepath.Dir(sessionsDir)
+
 			// Manage dev logs: ensure dir exists, truncate oversized logs
-			devlog.EnsureDir(cfg.WorkDir)
-			devlog.TruncateOversized(cfg.WorkDir)
+			devlog.EnsureDir(taskBaseDir)
+			devlog.TruncateOversized(taskBaseDir)
 
 			// Show spinner during quiet compact (Phase 1 of auto-compact)
 			var stopSpinner func()
@@ -412,6 +567,12 @@ func main() {
 				fmt.Fprintf(os.Stderr, "claude exited: %v\n", err)
 			}
 
+			// Wait for background summary to finish before stopping spinner,
+			// so the spinner covers both compact and summary generation.
+			if summaryDone != nil {
+				<-summaryDone
+				summaryDone = nil
+			}
 			if stopSpinner != nil {
 				stopSpinner()
 			}
@@ -422,7 +583,7 @@ func main() {
 			}
 
 			if cwSession != nil {
-				cwSession.Touch(cfg.WorkDir)
+				cwSession.Touch(sessionsDir)
 			}
 
 			// After print-mode compact (Phase 1), Claude exits normally (not via reload).
@@ -436,13 +597,13 @@ func main() {
 				// Session ended normally — mark as completed and extract summary
 				if cwSession != nil {
 					cwSession.Status = "completed"
+					cwSession.Save(sessionsDir)
 					if cwSession.Summary == "" {
-						cwSession.Summary = session.ExtractSummary(cwSession.ID, cfg.WorkDir)
+						session.GenerateSummaryAsync(cwSession.ID, sessionsDir, cfg.WorkDir)
 					}
-					cwSession.Save(cfg.WorkDir)
 				}
 				// Clean up dev logs and yolo plan files
-				devlog.Cleanup(cfg.WorkDir)
+				devlog.Cleanup(taskBaseDir)
 				if planFiles, err := filepath.Glob(filepath.Join(cfg.WorkDir, ".cw", "yolo", "plan-*.md")); err == nil {
 					for _, f := range planFiles {
 						os.Remove(f)
@@ -488,10 +649,6 @@ func main() {
 				cfg.SkipPermissions = true
 				cfg.YoloActive = true
 				cfg.YoloPlanPath = planPath
-				// Append yolo execution system prompt
-				if yoloPrompt, err := os.ReadFile(filepath.Join(cwembed.ModesDir(), "yolo.md")); err == nil {
-					cfg.SystemPrompts = append(cfg.SystemPrompts, string(yoloPrompt))
-				}
 			} else {
 				cfg.YoloActive = false
 				cfg.YoloPlanPath = ""
@@ -510,17 +667,20 @@ func main() {
 				os.Remove(paths.NewSessionFile())
 				newSession = true
 				isNewSession = true
-				// Mark old session as completed and create a fresh one
+				// Mark old session as completed and generate summary in background
 				if cwSession != nil {
 					cwSession.Status = "completed"
-					cwSession.Save(cfg.WorkDir)
+					cwSession.Save(sessionsDir)
+					if cwSession.Summary == "" {
+						summaryDone = session.GenerateSummaryBackground(cwSession.ID, sessionsDir, cfg.WorkDir)
+					}
 				}
 				cwSession = session.New(
 					generateSessionID(),
 					cfg.Mode.Name,
 					cfg.SkipPermissions,
 				)
-				cwSession.Save(cfg.WorkDir)
+				cwSession.Save(sessionsDir)
 			}
 
 			// Reload: clear one-shot fields

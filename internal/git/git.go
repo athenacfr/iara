@@ -222,6 +222,49 @@ func GetAllRepoInfo(projectPath string, repos []string) []RepoInfo {
 	return infos
 }
 
+// WorktreeAdd creates a new git worktree at worktreePath with a new branch.
+func WorktreeAdd(repoPath, worktreePath, branchName string) error {
+	cmd := exec.Command("git", "-C", repoPath, "worktree", "add", worktreePath, "-b", branchName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %s", err, out)
+	}
+	return nil
+}
+
+// WorktreeRemove removes a git worktree.
+func WorktreeRemove(repoPath, worktreePath string) error {
+	cmd := exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %s", err, out)
+	}
+	return nil
+}
+
+// DefaultBranch detects the default branch for a repo.
+// Tries origin/HEAD first, then checks for main/master branches, falls back to "main".
+func DefaultBranch(repoPath string) string {
+	// Try symbolic-ref for origin/HEAD
+	if out, err := run(repoPath, "symbolic-ref", "refs/remotes/origin/HEAD"); err == nil {
+		ref := strings.TrimSpace(out)
+		// Extract branch name from "refs/remotes/origin/main"
+		if parts := strings.SplitN(ref, "refs/remotes/origin/", 2); len(parts) == 2 && parts[1] != "" {
+			return parts[1]
+		}
+	}
+
+	// Check if main branch exists
+	if _, err := run(repoPath, "rev-parse", "--verify", "main"); err == nil {
+		return "main"
+	}
+
+	// Check if master branch exists
+	if _, err := run(repoPath, "rev-parse", "--verify", "master"); err == nil {
+		return "master"
+	}
+
+	return "main"
+}
+
 // detectDefaultBranch returns "main" or "master" for a repo.
 func detectDefaultBranch(dir string) string {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--verify", "refs/heads/main").Output()

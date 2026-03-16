@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/ahtwr/cw/internal/claude"
 	"github.com/ahtwr/cw/internal/git"
 	"github.com/ahtwr/cw/internal/project"
@@ -18,6 +21,8 @@ const (
 	screenProjectWizard
 	screenAddRepo
 	screenLauncher
+	screenSettings
+	screenTaskSelect
 )
 
 type Model struct {
@@ -32,6 +37,8 @@ type Model struct {
 	projectWizard   screen.ProjectWizardModel
 	addRepo         screen.AddRepoModel
 	launcher        screen.LauncherModel
+	settings        screen.SettingsModel
+	taskSelect      screen.TaskSelectModel
 }
 
 func NewModel(pluginDir string) Model {
@@ -46,9 +53,9 @@ func NewModel(pluginDir string) Model {
 
 func NewModelWithProject(pluginDir string, proj *project.Project, bypass bool) Model {
 	m := Model{
-		screen:          screenLauncher,
+		screen:          screenTaskSelect,
 		selectedProject: proj,
-		launcher:        screen.NewLauncherModel(bypass, proj.Path),
+		taskSelect:      screen.NewTaskSelectModel(proj.Path, proj.Name),
 		launchConfig: &claude.LaunchConfig{
 			PluginDir:   pluginDir,
 			WorkDir:     proj.Path,
@@ -59,8 +66,8 @@ func NewModelWithProject(pluginDir string, proj *project.Project, bypass bool) M
 }
 
 func (m Model) Init() tea.Cmd {
-	if m.screen == screenLauncher && m.selectedProject != nil {
-		return m.launcher.LoadSessions(m.selectedProject.Path)
+	if m.screen == screenTaskSelect && m.selectedProject != nil {
+		return m.taskSelect.Init()
 	}
 	return m.projectExplorer.Init()
 }
@@ -74,6 +81,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.projectWizard.SetSize(msg.Width, msg.Height)
 		m.addRepo.SetSize(msg.Width, msg.Height)
 		m.launcher.SetSize(msg.Width, msg.Height)
+		m.settings.SetSize(msg.Width, msg.Height)
+		m.taskSelect.SetSize(msg.Width, msg.Height)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -111,6 +120,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selectedProject = msg.Project
 		m.launchConfig.WorkDir = m.selectedProject.Path
 		m.launchConfig.ProjectName = m.selectedProject.Name
+		m.launchConfig.AutoCompactLimit = m.projectExplorer.AutoCompactLimit
 
 		var repoNames []string
 		for _, r := range m.selectedProject.Repos {
@@ -122,21 +132,66 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}()
 
+		// No metadata → auto-setup project
 		if !project.HasMetadata(msg.Project.Name) {
-			m.launchConfig.Prompt = "/cw:new-intention"
+			m.launchConfig.Prompt = "/cw:setup-project"
 			m.launchConfig.SkipPermissions = true
 			m.launchConfig.AutoSetup = true
-			m.launchConfig.AutoCompactLimit = m.projectExplorer.AutoCompactLimit
 			return m, tea.Quit
 		}
 
-		m.launchConfig.AutoCompactLimit = m.projectExplorer.AutoCompactLimit
+		// Navigate to task selection
+		m.screen = screenTaskSelect
+		m.taskSelect = screen.NewTaskSelectModel(m.selectedProject.Path, m.selectedProject.Name)
+		m.taskSelect.SetSize(m.width, m.height)
+		return m, m.taskSelect.Init()
+
+	case shared.TaskSelectedMsg:
+		if msg.IsNew {
+			// Launch Claude with /cw:new-task
+			m.launchConfig.Prompt = "/cw:new-task"
+			m.launchConfig.SkipPermissions = true
+			m.launchConfig.AutoSetup = true
+			return m, tea.Quit
+		}
+
+		// Set WorkDir and SessionsDir based on task
+		m.launchConfig.WorkDir = msg.WorkDir
+		m.launchConfig.SessionsDir = msg.SessionsDir
+
+		if msg.Task != nil {
+			m.launchConfig.TaskID = msg.Task.ID
+			m.launchConfig.TaskName = msg.Task.Name
+
+			// Pull worktree repos in background
+			worktreeBase := msg.WorkDir
+			var repoNames []string
+			entries, _ := os.ReadDir(worktreeBase)
+			for _, e := range entries {
+				if e.IsDir() && git.IsRepo(filepath.Join(worktreeBase, e.Name())) {
+					repoNames = append(repoNames, e.Name())
+				}
+			}
+			if len(repoNames) > 0 {
+				go func() {
+					ch := git.PullAll(worktreeBase, repoNames)
+					for range ch {
+					}
+				}()
+			}
+		}
 
 		bypass := m.projectExplorer.BypassPerms
+		s := project.LoadGlobalSettings()
+		taskName := ""
+		if msg.Task != nil {
+			taskName = msg.Task.Name
+		}
+
 		m.screen = screenLauncher
-		m.launcher = screen.NewLauncherModel(bypass, m.selectedProject.Path)
+		m.launcher = screen.NewLauncherModelForTask(bypass, msg.SessionsDir, s.DefaultMode, taskName)
 		m.launcher.SetSize(m.width, m.height)
-		return m, m.launcher.LoadSessions(m.selectedProject.Path)
+		return m, m.launcher.LoadSessions()
 
 	case shared.ModeSelectedMsg:
 		m.launchConfig.Mode = msg.Mode
@@ -166,6 +221,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addRepo = screen.NewAddRepoModel(msg.ProjectName)
 			m.addRepo.SetSize(m.width, m.height)
 			return m, m.addRepo.Init()
+		case shared.ScreenSettings:
+			m.screen = screenSettings
+			m.settings = screen.NewSettingsModel()
+			m.settings.SetSize(m.width, m.height)
+			return m, m.settings.Init()
+		case shared.ScreenTaskSelect:
+			if m.selectedProject != nil {
+				m.screen = screenTaskSelect
+				m.taskSelect = screen.NewTaskSelectModel(m.selectedProject.Path, m.selectedProject.Name)
+				m.taskSelect.SetSize(m.width, m.height)
+				return m, m.taskSelect.Init()
+			}
+			// Fallback to project explorer if no project selected
+			m.screen = screenProjectExplorer
+			m.projectExplorer = screen.NewProjectExplorerModel()
+			m.projectExplorer.SetSize(m.width, m.height)
+			return m, m.projectExplorer.Init()
 		}
 		return m, nil
 
@@ -183,6 +255,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.addRepo, cmd = m.addRepo.Update(msg)
 	case screenLauncher:
 		m.launcher, cmd = m.launcher.Update(msg)
+	case screenSettings:
+		m.settings, cmd = m.settings.Update(msg)
+	case screenTaskSelect:
+		m.taskSelect, cmd = m.taskSelect.Update(msg)
 	}
 	return m, cmd
 }
@@ -197,6 +273,10 @@ func (m Model) View() string {
 		return m.addRepo.View()
 	case screenLauncher:
 		return m.launcher.View()
+	case screenSettings:
+		return m.settings.View()
+	case screenTaskSelect:
+		return m.taskSelect.View()
 	}
 	return ""
 }

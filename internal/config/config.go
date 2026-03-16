@@ -1,14 +1,9 @@
 package config
 
-import (
-	"path/filepath"
-)
-
 type Mode struct {
 	Name        string
 	Description string
-	Flag        string // "--append-system-prompt-file" for system prompt injection
-	Value       string // file path or command string
+	Agent       string // agent name passed via --agent (e.g., "researcher", "reviewer")
 }
 
 var Modes []Mode
@@ -23,12 +18,11 @@ func GetMode(name string) (Mode, bool) {
 	return Mode{}, false
 }
 
-func InitModes(modesDir string) {
+func InitModes() {
 	Modes = []Mode{
 		{Name: "code", Description: "Write features, fix bugs (default)"},
-		{Name: "research", Description: "Explore codebase, read-only", Flag: "--append-system-prompt-file", Value: filepath.Join(modesDir, "research.md")},
-		{Name: "review", Description: "Review code changes", Flag: "--append-system-prompt-file", Value: filepath.Join(modesDir, "review.md")},
+		{Name: "research", Description: "Explore codebase, read-only", Agent: "researcher"},
+		{Name: "review", Description: "Review code changes", Agent: "reviewer"},
 		{Name: "none", Description: "No preset behavior"},
 	}
 }
-

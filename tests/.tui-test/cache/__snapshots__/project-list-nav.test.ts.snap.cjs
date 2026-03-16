@@ -7,10 +7,10 @@ exports[`Project List — navigation › collapses repos by toggling t | 1`] = S
 │┌──────────────────────────────┐│ alpha-project                                 │
 ││ search...                    ││ opened just now                               │
 │└──────────────────────────────┘│                                               │
-│▶ alpha-project  2 repos        │ Alpha                                         │
+│▶ 1. alpha-project  2 repos     │ Alpha                                         │
 │[toggle rename delete]          │                                               │
-│  beta-project  1 repo          │ Test project alpha                            │
-│  + new project                 │                                               │
+│  2. beta-project  1 repo       │ Test project alpha                            │
+│  3. + new project              │                                               │
 │                                │   backend on detached ✓                       │
 │                                │                                               │
 │                                │   frontend on detached ✓                      │
@@ -25,7 +25,7 @@ exports[`Project List — navigation › collapses repos by toggling t | 1`] = S
 │                                                                                │
 │                                                                                │
 │                                                                                │
-│permissions  bypass    compact  off                                             │
+│permissions  bypass    compact  off    , settings                               │
 ╰────────────────────────────────────────────────────────────────────────────────╯
 `;
 
@@ -36,10 +36,10 @@ exports[`Project List — navigation › enters search mode with s and filters |
 │┌──────────────────────────────┐│ alpha-project                                 │
 ││ search...                    ││ opened just now                               │
 │└──────────────────────────────┘│                                               │
-│▶ alpha-project  2 repos        │ Alpha                                         │
+│▶ 1. alpha-project  2 repos     │ Alpha                                         │
 │[toggle rename delete]          │                                               │
-│  beta-project  1 repo          │ Test project alpha                            │
-│  + new project                 │                                               │
+│  2. beta-project  1 repo       │ Test project alpha                            │
+│  3. + new project              │                                               │
 │                                │   backend on detached ✓                       │
 │                                │                                               │
 │                                │   frontend on detached ✓                      │
@@ -54,7 +54,7 @@ exports[`Project List — navigation › enters search mode with s and filters |
 │                                                                                │
 │                                                                                │
 │                                                                                │
-│permissions  bypass    compact  off                                             │
+│permissions  bypass    compact  off    , settings                               │
 ╰────────────────────────────────────────────────────────────────────────────────╯
 `;
 
@@ -65,10 +65,10 @@ exports[`Project List — navigation › expands with l and collapses with h | 1
 │┌──────────────────────────────┐│ alpha-project                                 │
 ││ search...                    ││ opened just now                               │
 │└──────────────────────────────┘│                                               │
-│▶ alpha-project  2 repos        │ Alpha                                         │
+│▶ 1. alpha-project  2 repos     │ Alpha                                         │
 │[toggle rename delete]          │                                               │
-│  beta-project  1 repo          │ Test project alpha                            │
-│  + new project                 │                                               │
+│  2. beta-project  1 repo       │ Test project alpha                            │
+│  3. + new project              │                                               │
 │                                │   backend on detached ✓                       │
 │                                │                                               │
 │                                │   frontend on detached ✓                      │
@@ -83,7 +83,7 @@ exports[`Project List — navigation › expands with l and collapses with h | 1
 │                                                                                │
 │                                                                                │
 │                                                                                │
-│permissions  bypass    compact  off                                             │
+│permissions  bypass    compact  off    , settings                               │
 ╰────────────────────────────────────────────────────────────────────────────────╯
 `;
 

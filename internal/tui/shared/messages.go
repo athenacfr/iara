@@ -3,6 +3,7 @@ package shared
 import (
 	"github.com/ahtwr/cw/internal/config"
 	"github.com/ahtwr/cw/internal/project"
+	"github.com/ahtwr/cw/internal/task"
 )
 
 // Screen identifies a TUI screen.
@@ -13,6 +14,8 @@ const (
 	ScreenProjectWizard
 	ScreenAddRepo
 	ScreenLauncher
+	ScreenSettings
+	ScreenTaskSelect
 )
 
 // ProjectSelectedMsg is sent when a project is selected from the project list.
@@ -36,6 +39,15 @@ type ModeSelectedMsg struct {
 type NavigateMsg struct {
 	Screen      Screen
 	ProjectName string
+}
+
+// TaskSelectedMsg is sent when a task is selected from the task list.
+type TaskSelectedMsg struct {
+	Task        *task.Task // nil for default branch
+	SessionsDir string     // full path to sessions directory
+	WorkDir     string     // worktree base or project root
+	IsDefault   bool       // true for default branch entry
+	IsNew       bool       // true for "+ New Task" entry
 }
 
 // LaunchMsg signals that Claude should be launched.

@@ -18,6 +18,7 @@ import (
 
 	"github.com/ahtwr/iara/internal/claude"
 	"github.com/ahtwr/iara/internal/config"
+	"github.com/ahtwr/iara/internal/dev"
 	"github.com/ahtwr/iara/internal/devlog"
 	iaraembed "github.com/ahtwr/iara/internal/embed"
 	"github.com/ahtwr/iara/internal/env"
@@ -113,6 +114,14 @@ func internalReload() {
 func internalNewSession() {
 	if err := os.WriteFile(paths.NewSessionFile(), []byte("1"), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot write new-session file: %v\n", err)
+		os.Exit(1)
+	}
+	internalReload()
+}
+
+func internalExitToTUI() {
+	if err := os.WriteFile(paths.ExitToTUIFile(), []byte("1"), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write exit-to-tui file: %v\n", err)
 		os.Exit(1)
 	}
 	internalReload()
@@ -327,6 +336,9 @@ func main() {
 		case "new-session":
 			internalNewSession()
 			return
+		case "exit-to-tui":
+			internalExitToTUI()
+			return
 		case "auto-compact", "compact-and-continue":
 			internalAutoCompact()
 			return
@@ -373,6 +385,93 @@ func main() {
 			return
 		case "finish-task":
 			internalFinishTask()
+			return
+		case "dev-delete-outdated":
+			taskDir := os.Getenv("IARA_TASK_DIR")
+			if taskDir == "" {
+				fmt.Fprintln(os.Stderr, "IARA_TASK_DIR must be set")
+				os.Exit(1)
+			}
+			cfg, err := dev.LoadConfig(taskDir)
+			if err != nil {
+				// No config found
+				fmt.Println("No dev config found")
+				os.Exit(1)
+			}
+			if cfg.Version == dev.ConfigVersion {
+				fmt.Println("Config is up to date")
+			} else {
+				dev.DeleteConfig(taskDir)
+				fmt.Println("Outdated config removed")
+				os.Exit(1)
+			}
+			return
+		case "dev-launch":
+			taskDir := os.Getenv("IARA_TASK_DIR")
+			projectDir := os.Getenv("IARA_PROJECT_DIR")
+			if taskDir == "" || projectDir == "" {
+				fmt.Fprintln(os.Stderr, "IARA_TASK_DIR and IARA_PROJECT_DIR must be set")
+				os.Exit(1)
+			}
+			if err := dev.Launch(taskDir, projectDir); err != nil {
+				fmt.Fprintf(os.Stderr, "dev-launch: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "dev-restart":
+			taskDir := os.Getenv("IARA_TASK_DIR")
+			projectDir := os.Getenv("IARA_PROJECT_DIR")
+			if taskDir == "" || projectDir == "" {
+				fmt.Fprintln(os.Stderr, "IARA_TASK_DIR and IARA_PROJECT_DIR must be set")
+				os.Exit(1)
+			}
+			if err := dev.Restart(taskDir, projectDir); err != nil {
+				fmt.Fprintf(os.Stderr, "dev-restart: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "dev-stop":
+			taskDir := os.Getenv("IARA_TASK_DIR")
+			if taskDir == "" {
+				fmt.Fprintln(os.Stderr, "IARA_TASK_DIR must be set")
+				os.Exit(1)
+			}
+			if err := dev.Stop(taskDir); err != nil {
+				fmt.Fprintf(os.Stderr, "dev-stop: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "dev-status":
+			taskDir := os.Getenv("IARA_TASK_DIR")
+			if taskDir == "" {
+				fmt.Fprintln(os.Stderr, "IARA_TASK_DIR must be set")
+				os.Exit(1)
+			}
+			if err := dev.PrintStatus(taskDir); err != nil {
+				fmt.Fprintf(os.Stderr, "dev-status: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "dev-logs":
+			taskDir := os.Getenv("IARA_TASK_DIR")
+			if taskDir == "" {
+				fmt.Fprintln(os.Stderr, "IARA_TASK_DIR must be set")
+				os.Exit(1)
+			}
+			subproject := ""
+			lines := 50
+			if len(os.Args) > 3 {
+				subproject = os.Args[3]
+			}
+			if len(os.Args) > 4 {
+				if n, err := strconv.Atoi(os.Args[4]); err == nil {
+					lines = n
+				}
+			}
+			if err := dev.PrintLogs(taskDir, subproject, lines); err != nil {
+				fmt.Fprintf(os.Stderr, "dev-logs: %v\n", err)
+				os.Exit(1)
+			}
 			return
 		}
 	}
@@ -608,6 +707,27 @@ func main() {
 				os.Remove(paths.YoloActiveFile())
 
 				// Return to launcher screen for the same project
+				if cfg.ProjectName != "" {
+					if proj, err := project.Get(cfg.ProjectName); err == nil {
+						returnProject = proj
+						returnBypass = cfg.SkipPermissions
+					}
+				}
+				break
+			}
+
+			// Check for exit-to-tui sideband: return to TUI instead of relaunching Claude
+			if _, err := os.Stat(paths.ExitToTUIFile()); err == nil {
+				os.Remove(paths.ExitToTUIFile())
+				// Clean up any task-switch sideband (TUI handles task selection)
+				os.Remove(paths.TaskSwitchFile())
+				os.Remove(paths.NewSessionFile())
+				// Mark current session as completed
+				if cwSession != nil {
+					cwSession.Status = "completed"
+					cwSession.Save(sessionsDir)
+				}
+				// Return to task selection for the same project
 				if cfg.ProjectName != "" {
 					if proj, err := project.Get(cfg.ProjectName); err == nil {
 						returnProject = proj

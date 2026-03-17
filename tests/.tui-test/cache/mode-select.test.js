@@ -1,4 +1,4 @@
-//# hash=38b4ba20c602b02362afc39aae7cb727
+//# hash=804aed459eaddd5f08a3772d9084f6d1
 //# sourceMappingURL=mode-select.test.js.map
 
 function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
@@ -149,7 +149,7 @@ test.use({
     columns: 80,
     env: env.env
 });
-// Navigate to mode select screen
+// Navigate to mode select screen (project list → task select → mode select)
 function goToModeSelect(terminal) {
     return _async_to_generator(function() {
         return _ts_generator(this, function(_state) {
@@ -170,11 +170,20 @@ function goToModeSelect(terminal) {
                 case 2:
                     _state.sent();
                     terminal.submit();
+                    // Navigate through task select screen - select default branch (item 2)
+                    return [
+                        4,
+                        expect(terminal.getByText("TASKS")).toBeVisible()
+                    ];
+                case 3:
+                    _state.sent();
+                    terminal.keyDown();
+                    terminal.submit();
                     return [
                         4,
                         expect(terminal.getByText("MODE")).toBeVisible()
                     ];
-                case 3:
+                case 4:
                     _state.sent();
                     return [
                         2
@@ -368,7 +377,7 @@ test.describe("Mode Select", function() {
             });
         })();
     });
-    test("returns to project list on Escape", function(param) {
+    test("returns to task select on Escape", function(param) {
         var terminal = param.terminal;
         return _async_to_generator(function() {
             return _ts_generator(this, function(_state) {
@@ -383,7 +392,7 @@ test.describe("Mode Select", function() {
                         terminal.keyEscape();
                         return [
                             4,
-                            expect(terminal.getByText("PROJECTS")).toBeVisible()
+                            expect(terminal.getByText("TASKS")).toBeVisible()
                         ];
                     case 2:
                         _state.sent();

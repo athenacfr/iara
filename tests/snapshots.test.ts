@@ -38,6 +38,10 @@ test.describe("Snapshots", () => {
   test("mode select initial render", async ({ terminal }) => {
     await waitForReady(terminal);
     terminal.submit();
+    // Navigate through task select screen - select default branch
+    await expect(terminal.getByText("TASKS")).toBeVisible();
+    terminal.keyDown();
+    terminal.submit();
     await expect(terminal.getByText("MODE")).toBeVisible();
     await expect(terminal).toMatchSnapshot();
   });

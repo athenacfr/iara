@@ -14,10 +14,14 @@ test.use({
   env: env.env,
 });
 
-// Navigate to mode select screen
+// Navigate to mode select screen (project list → task select → mode select)
 async function goToModeSelect(terminal: any) {
   await waitForReady(terminal);
   await expect(terminal.getByText("mode-test-project", { strict: false })).toBeVisible();
+  terminal.submit();
+  // Navigate through task select screen - select default branch (item 2)
+  await expect(terminal.getByText("TASKS")).toBeVisible();
+  terminal.keyDown();
   terminal.submit();
   await expect(terminal.getByText("MODE")).toBeVisible();
 }
@@ -61,10 +65,10 @@ test.describe("Mode Select", () => {
     await expect(terminal.getByText(/normal permissions/g)).toBeVisible();
   });
 
-  test("returns to project list on Escape", async ({ terminal }) => {
+  test("returns to task select on Escape", async ({ terminal }) => {
     await goToModeSelect(terminal);
     terminal.keyEscape();
-    await expect(terminal.getByText("PROJECTS")).toBeVisible();
+    await expect(terminal.getByText("TASKS")).toBeVisible();
   });
 
   test("launches on Enter (exits TUI)", async ({ terminal }) => {

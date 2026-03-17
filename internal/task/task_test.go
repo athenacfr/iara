@@ -225,6 +225,50 @@ func TestWorktreeBase(t *testing.T) {
 	}
 }
 
+func TestDelete(t *testing.T) {
+	dir := t.TempDir()
+
+	tk := New("delete-test", "A task to delete", "feat/delete")
+	if err := Save(dir, tk); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Verify task dir exists
+	taskDir := TaskDir(dir, tk.ID)
+	if _, err := os.Stat(taskDir); err != nil {
+		t.Fatalf("task dir should exist before delete: %v", err)
+	}
+
+	if err := Delete(dir, tk.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	// Verify task dir is gone
+	if _, err := os.Stat(taskDir); !os.IsNotExist(err) {
+		t.Fatal("task dir should not exist after delete")
+	}
+
+	// Verify task no longer appears in List
+	tasks, err := List(dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, tk := range tasks {
+		if tk.ID == tk.ID {
+			t.Fatal("deleted task should not appear in list")
+		}
+	}
+}
+
+func TestDeleteNonexistent(t *testing.T) {
+	dir := t.TempDir()
+
+	err := Delete(dir, "nonexistent-id")
+	if err == nil {
+		t.Fatal("expected error when deleting nonexistent task")
+	}
+}
+
 // initGitRepo creates a git repo with an initial commit.
 func initGitRepo(t *testing.T, path string) {
 	t.Helper()

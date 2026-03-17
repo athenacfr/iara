@@ -58,8 +58,38 @@ exports[`Snapshots › delete confirmation dialog | 1`] = String.raw`
 ╰────────────────────────────────────────────────────────────────────────────────╯
 `;
 
+exports[`Snapshots › mode select initial render | 1`] = String.raw`
+╭────────────────────────────────────────────────────────────────────────────────╮
+│MODE                                                                            │
+│  code    research    review    none                                            │
+│  Write features, fix bugs (default)                                            │
+│                                                                                │
+│SESSIONS                                                                        │
+│┌──────────────────────────────────────┐│ New Session                           │
+││ search...                            ││                                       │
+│└──────────────────────────────────────┘│ Start a fresh conversation with       │
+│▶ 1. + New Session                      │ updated system prompts and config.    │
+│  2. List sessions                      │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                        │                                       │
+│                                                                                │
+│←→ mode  ↑↓ session  tab permissions  enter launch  skip permissions            │
+│                                                                                │
+│                                                                                │
+╰────────────────────────────────────────────────────────────────────────────────╯
+`;
+
 exports[`Snapshots › project list initial render | 1`] = String.raw`
 ╭────────────────────────────────────────────────────────────────────────────────╮
+│PROJECTS                                                                        │
 │                                                                                │
 │┌──────────────────────────────┐│ snap-project                                  │
 ││ search...                    ││ opened just now                               │
@@ -71,7 +101,6 @@ exports[`Snapshots › project list initial render | 1`] = String.raw`
 │                                │   api on detached ✓                           │
 │                                │                                               │
 │                                │   web on detached ✓                           │
-│                                │                                               │
 │                                │                                               │
 │                                │                                               │
 │                                │                                               │
@@ -89,6 +118,7 @@ exports[`Snapshots › project list initial render | 1`] = String.raw`
 
 exports[`Snapshots › project list with expanded repos | 1`] = String.raw`
 ╭────────────────────────────────────────────────────────────────────────────────╮
+│PROJECTS                                                                        │
 │                                                                                │
 │┌──────────────────────────────┐│ snap-project                                  │
 ││ search...                    ││ opened just now                               │
@@ -100,7 +130,6 @@ exports[`Snapshots › project list with expanded repos | 1`] = String.raw`
 │                                │   api on detached ✓                           │
 │                                │                                               │
 │                                │   web on detached ✓                           │
-│                                │                                               │
 │                                │                                               │
 │                                │                                               │
 │                                │                                               │

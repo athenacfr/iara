@@ -155,6 +155,16 @@ func WorktreeBase(projectDir, taskSlug string) string {
 	return filepath.Join(projectDir, ".worktrees", taskSlug)
 }
 
+// Delete removes a task's entire directory from disk.
+// It does not remove worktrees — call RemoveWorktree first if needed.
+func Delete(projectDir, taskID string) error {
+	dir := TaskDir(projectDir, taskID)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return fmt.Errorf("task not found: %s", taskID)
+	}
+	return os.RemoveAll(dir)
+}
+
 // MigrateSessionsIfNeeded moves legacy .iara/sessions/ to .iara/tasks/default/sessions/
 // if the old directory exists and the new one does not. This is a one-time migration.
 func MigrateSessionsIfNeeded(projectDir string) error {

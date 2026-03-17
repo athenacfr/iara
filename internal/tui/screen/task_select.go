@@ -36,14 +36,21 @@ type defaultBranchMsg struct {
 	branch string
 }
 
+type taskDeletedMsg struct {
+	err error
+}
+
 // TaskSelectModel shows the task selection screen.
 type TaskSelectModel struct {
-	fzfList       widget.FzfListModel
-	projectDir    string
-	projectName   string
-	defaultBranch string
-	tasks         []task.Task
-	width, height int
+	fzfList        widget.FzfListModel
+	projectDir     string
+	projectName    string
+	defaultBranch  string
+	tasks          []task.Task
+	width, height  int
+	confirmDelete  bool   // true when waiting for delete confirmation
+	deleteTaskName string // name of task pending deletion
+	deleteTaskID   string // ID of task pending deletion
 }
 
 // NewTaskSelectModel creates a new task selection screen.
@@ -155,8 +162,48 @@ func (m TaskSelectModel) Update(msg tea.Msg) (TaskSelectModel, tea.Cmd) {
 		m.fzfList.SetItems(m.buildItems())
 		return m, nil
 
+	case taskDeletedMsg:
+		if msg.err != nil {
+			return m, nil
+		}
+		// Reload tasks after deletion
+		return m, m.LoadTasks(m.projectDir)
+
 	case tea.KeyMsg:
 		key := msg.String()
+
+		// Handle delete confirmation
+		if m.confirmDelete {
+			switch key {
+			case "y", "Y":
+				m.confirmDelete = false
+				taskID := m.deleteTaskID
+				projectDir := m.projectDir
+				return m, func() tea.Msg {
+					err := task.Delete(projectDir, taskID)
+					return taskDeletedMsg{err: err}
+				}
+			default:
+				// Any other key cancels
+				m.confirmDelete = false
+				return m, nil
+			}
+		}
+
+		// "d" key triggers delete on existing tasks (kind=2)
+		if key == "d" && !m.fzfList.IsSearching() {
+			item := m.fzfList.SelectedItem()
+			if item != nil {
+				ti := item.(taskItem)
+				if ti.entry.kind == 2 && ti.entry.task != nil {
+					m.confirmDelete = true
+					m.deleteTaskName = ti.entry.task.Name
+					m.deleteTaskID = ti.entry.task.ID
+					return m, nil
+				}
+			}
+			return m, nil
+		}
 
 		newList, consumed, result := m.fzfList.HandleKey(key)
 		m.fzfList = newList
@@ -215,12 +262,22 @@ func (m TaskSelectModel) View() string {
 	b.WriteString(m.fzfList.View())
 	b.WriteString("\n")
 
-	keybar := style.RenderKeybar(
-		style.KeyBind{Key: "↑↓", Desc: "select"},
-		style.KeyBind{Key: "enter", Desc: "confirm"},
-		style.KeyBind{Key: "esc", Desc: "back"},
-	)
-	b.WriteString(keybar)
+	if m.confirmDelete {
+		prompt := style.ErrorStyle.Render("Delete task ") +
+			style.AccentStyle.Render(m.deleteTaskName) +
+			style.ErrorStyle.Render("? ") +
+			style.KeyStyle.Render("y") +
+			style.DimStyle.Render("/any key to cancel")
+		b.WriteString(prompt)
+	} else {
+		keybar := style.RenderKeybar(
+			style.KeyBind{Key: "↑↓", Desc: "select"},
+			style.KeyBind{Key: "enter", Desc: "confirm"},
+			style.KeyBind{Key: "d", Desc: "delete"},
+			style.KeyBind{Key: "esc", Desc: "back"},
+		)
+		b.WriteString(keybar)
+	}
 
 	return b.String()
 }

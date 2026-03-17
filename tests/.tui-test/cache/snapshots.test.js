@@ -1,4 +1,4 @@
-//# hash=2ab30ce26f248e98eb4cfea657a8b964
+//# hash=0994a5d213bc1880e60164607f51591f
 //# sourceMappingURL=snapshots.test.js.map
 
 function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
@@ -260,17 +260,26 @@ test.describe("Snapshots", function() {
                     case 1:
                         _state.sent();
                         terminal.submit();
+                        // Navigate through task select screen - select default branch
+                        return [
+                            4,
+                            expect(terminal.getByText("TASKS")).toBeVisible()
+                        ];
+                    case 2:
+                        _state.sent();
+                        terminal.keyDown();
+                        terminal.submit();
                         return [
                             4,
                             expect(terminal.getByText("MODE")).toBeVisible()
                         ];
-                    case 2:
+                    case 3:
                         _state.sent();
                         return [
                             4,
                             expect(terminal).toMatchSnapshot()
                         ];
-                    case 3:
+                    case 4:
                         _state.sent();
                         return [
                             2
